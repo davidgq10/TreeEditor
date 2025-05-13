@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { Formato, Nodo, CuentaContable, CentroCosto } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
 interface ExportOptions {
   formato: Formato;
@@ -79,14 +80,16 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [] }: 
 
       // Centros de costo seleccionados (ID Netsuite y nombres)
       if (nodo.centrosCosto && nodo.centrosCosto.length > 0 && centrosCostoList.length > 0) {
-        rowData['centrosCostoIds'] = nodo.centrosCosto.map(id => {
-          const centro = centrosCostoList.find(c => c.id === id);
-          return centro ? centro.idNetsuite : '';
-        }).filter(Boolean).join(', ');
-        rowData['centrosCostoNombres'] = nodo.centrosCosto.map(id => {
-          const centro = centrosCostoList.find(c => c.id === id);
-          return centro ? centro.nombre : '';
-        }).filter(Boolean).join(', ');
+        // Los IDs ya son NetSuite IDs, solo necesitamos verificar que existan en la lista
+        const centrosEncontrados = nodo.centrosCosto
+          .map(netSuiteId => {
+            const centro = centrosCostoList.find(c => c.idNetsuite === netSuiteId);
+            return centro ? { id: netSuiteId, nombre: centro.nombre } : null;
+          })
+          .filter(Boolean);
+        
+        rowData['centrosCostoIds'] = centrosEncontrados.map(c => c?.id).join(', ');
+        rowData['centrosCostoNombres'] = centrosEncontrados.map(c => c?.nombre).join(', ');
       } else {
         rowData['centrosCostoIds'] = '';
         rowData['centrosCostoNombres'] = '';
@@ -156,4 +159,183 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [] }: 
   });
 
   return workbook.xlsx.writeBuffer() as Promise<Buffer>;
+}
+
+export interface ImportOptions {
+  file: File;
+  centrosCostoList: CentroCosto[];
+}
+
+export async function importFromExcel({ file, centrosCostoList }: ImportOptions): Promise<{ formato: Formato }> {
+  const arrayBuffer = await file.arrayBuffer();
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(arrayBuffer);
+  
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    throw new Error('El archivo Excel no contiene hojas de cálculo');
+  }
+
+  // Obtener índices de columnas
+  const headerRow = worksheet.getRow(1);
+  const columnIndices: { [key: string]: number } = {};
+  
+  headerRow.eachCell((cell, colNumber) => {
+    columnIndices[String(cell.value).trim()] = colNumber;
+  });
+
+  // Validar columnas requeridas
+  const requiredColumns = [
+    'Nivel 1', 
+    'Numero de Cuenta',
+    'Nombre de Cuenta',
+    'Tipo de Cuenta',
+    'Invertir valor',
+    'Centro de costo seleccionados',
+    'Nombres de centro de costo seleccionados'
+  ];
+
+  for (const col of requiredColumns) {
+    if (!(col in columnIndices)) {
+      throw new Error(`Columna requerida no encontrada: ${col}`);
+    }
+  }
+
+  const formato: Formato = {
+    id: uuidv4(),
+    nombre: `Importado_${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}`,
+    estructura: [],
+    centrosCostoDefault: []
+  };
+
+  // Mapa para mantener los nodos por nivel
+  const nodesByLevel: { [level: number]: Nodo[] } = { 0: [] };
+  const parentStack: { node: Nodo; level: number }[] = [];
+  
+  // Procesar filas (empezando desde la fila 2 que contiene datos)
+  for (let i = 2; i <= worksheet.rowCount; i++) {
+    const row = worksheet.getRow(i);
+    
+    // Obtener valores de las celdas
+    const nivel1 = row.getCell(columnIndices['Nivel 1']).value?.toString()?.trim();
+    const nivel2 = columnIndices['Nivel 2'] ? row.getCell(columnIndices['Nivel 2']).value?.toString()?.trim() : null;
+    const nivel3 = columnIndices['Nivel 3'] ? row.getCell(columnIndices['Nivel 3']).value?.toString()?.trim() : null;
+    const nivel4 = columnIndices['Nivel 4'] ? row.getCell(columnIndices['Nivel 4']).value?.toString()?.trim() : null;
+    const nivel5 = columnIndices['Nivel 5'] ? row.getCell(columnIndices['Nivel 5']).value?.toString()?.trim() : null;
+    
+    const numeroCuenta = row.getCell(columnIndices['Numero de Cuenta']).value?.toString()?.trim();
+    const nombreCuenta = row.getCell(columnIndices['Nombre de Cuenta']).value?.toString()?.trim();
+    const tipoCuenta = row.getCell(columnIndices['Tipo de Cuenta']).value?.toString()?.trim();
+    const invertirValor = row.getCell(columnIndices['Invertir valor']).value === true;
+    
+    // Obtener los IDs de NetSuite de los centros de costo
+    const centrosCostoCell = row.getCell(columnIndices['Centro de costo seleccionados']).value;
+    console.log('Valor de la celda de centros de costo:', centrosCostoCell);
+    
+    // Si es un array, unirlo como string, si es string usarlo directamente
+    const centrosCostoStr = Array.isArray(centrosCostoCell) 
+      ? centrosCostoCell.join(',')
+      : centrosCostoCell?.toString() || '';
+      
+    // Obtener los IDs de NetSuite de la celda
+    const centrosCostoIds = centrosCostoStr
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+      
+    console.log('IDs de NetSuite extraídos:', centrosCostoIds);
+    
+    // Verificar que todos los IDs existan en centrosCostoList
+    const centrosNoEncontrados = centrosCostoIds.filter(netSuiteId => 
+      !centrosCostoList.some(c => c.idNetsuite === netSuiteId)
+    );
+    
+    if (centrosNoEncontrados.length > 0) {
+      console.warn('Los siguientes IDs de NetSuite no se encontraron en la lista de centros de costo:', centrosNoEncontrados);
+    }
+    
+    // Determinar el nivel actual basado en las columnas con valores
+    let currentLevel = 0;
+    if (nivel5) currentLevel = 4;
+    else if (nivel4) currentLevel = 3;
+    else if (nivel3) currentLevel = 2;
+    else if (nivel2) currentLevel = 1;
+    
+    // Si es una cuenta (tiene número de cuenta)
+    if (numeroCuenta && nombreCuenta && tipoCuenta) {
+      const cuenta: CuentaContable = {
+        id: uuidv4(),
+        codigo: numeroCuenta,
+        nombre: nombreCuenta,
+        naturaleza: tipoCuenta.toLowerCase() as 'gasto' | 'ingreso'
+      };
+      
+      const node: Nodo = {
+        id: uuidv4(),
+        tipo: 'cuenta',
+        nombre: nombreCuenta,
+        cuenta,
+        cuentaId: cuenta.id,
+        hijos: [],
+        centrosCosto: centrosCostoIds,
+        invertirValor
+      };
+      
+      // Agregar a los nodos del nivel actual
+      if (!nodesByLevel[currentLevel]) {
+        nodesByLevel[currentLevel] = [];
+      }
+      nodesByLevel[currentLevel].push(node);
+      
+      // Actualizar la pila de padres
+      parentStack.length = currentLevel;
+      if (parentStack.length > 0) {
+        parentStack[parentStack.length - 1].node.hijos.push(node);
+      } else {
+        formato.estructura.push(node);
+      }
+    } 
+    // Si es un grupo (no tiene número de cuenta)
+    else if (nivel1) {
+      const nombreGrupo = nivel5 || nivel4 || nivel3 || nivel2 || nivel1;
+      const node: Nodo = {
+        id: uuidv4(),
+        tipo: 'grupo',
+        nombre: nombreGrupo,
+        hijos: [],
+        centrosCosto: []
+      };
+      
+      // Agregar a los nodos del nivel actual
+      if (!nodesByLevel[currentLevel]) {
+        nodesByLevel[currentLevel] = [];
+      }
+      nodesByLevel[currentLevel].push(node);
+      
+      // Actualizar la pila de padres
+      parentStack.length = currentLevel;
+      if (parentStack.length > 0) {
+        parentStack[parentStack.length - 1].node.hijos.push(node);
+      } else {
+        formato.estructura.push(node);
+      }
+      
+      // Agregar a la pila como padre potencial para los siguientes nodos
+      parentStack.push({ node, level: currentLevel });
+    }
+  }
+  
+  // Obtener centros de costo por defecto de las cuentas
+  const centrosCostoDefault = new Set<string>();
+  const processNode = (node: Nodo) => {
+    if (node.centrosCosto && node.centrosCosto.length > 0) {
+      node.centrosCosto.forEach(centroId => centrosCostoDefault.add(centroId));
+    }
+    node.hijos.forEach(processNode);
+  };
+  
+  formato.estructura.forEach(processNode);
+  formato.centrosCostoDefault = Array.from(centrosCostoDefault);
+  
+  return { formato };
 }

@@ -21,7 +21,7 @@ interface AppState {
   centrosCosto: CentroCosto[];
   centrosCostoDefault: string[];
   // Acciones de Formatos
-  agregarFormato: (nombre: string) => void;
+  agregarFormato: (formato: string | Formato) => void;
   eliminarFormato: (id: string) => void;
   seleccionarFormato: (id: string) => void;
   actualizarFormato: (id: string, nombre: string) => void;
@@ -71,13 +71,25 @@ export const useAppStore = create<AppState>((set) => ({
   centrosCostoDefault: centrosCostoDefaultGuardados,
 
   // Acciones de Formatos
-  agregarFormato: (nombre) => {
-    const nuevoFormato: Formato = {
-      id: uuidv4(),
-      nombre,
-      estructura: [],
-      centrosCostoDefault: []
-    };
+  agregarFormato: (formato: string | Formato) => {
+    let nuevoFormato: Formato;
+    
+    if (typeof formato === 'string') {
+      // Si se pasa un string, crear un nuevo formato con ese nombre
+      nuevoFormato = {
+        id: uuidv4(),
+        nombre: formato,
+        estructura: [],
+        centrosCostoDefault: []
+      };
+    } else {
+      // Si se pasa un objeto Formato, usarlo directamente
+      nuevoFormato = {
+        ...formato,
+        id: formato.id || uuidv4()
+      };
+    }
+    
     set((state) => {
       const newState = {
         formatos: [...state.formatos, nuevoFormato],

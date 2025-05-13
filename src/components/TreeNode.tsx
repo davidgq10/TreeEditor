@@ -221,18 +221,25 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
                 </span>
                 {centrosCostoExpandido && node.centrosCosto && node.centrosCosto.length > 0 && (
                   <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto border rounded p-2 bg-gray-50/50 mt-1">
-                    {node.centrosCosto.map(id => {
-                      const centro = centrosCosto.find(c => c.id === id);
-                      if (!centro) return null;
+                    {node.centrosCosto.map(netSuiteId => {
+                      // Buscar el centro de costo por idNetsuite
+                      const centro = centrosCosto.find(c => c.idNetsuite === netSuiteId);
+                      
+                      if (!centro) {
+                        console.warn(`No se encontró centro de costo con idNetsuite: ${netSuiteId}`);
+                        return null;
+                      }
+                      
                       return (
-                        <span key={id} className="inline-flex items-center bg-blue-100 text-blue-800 rounded-full px-3 py-1 text-xs font-medium hover:bg-blue-200 transition-colors">
+                        <span key={centro.idNetsuite} className="inline-flex items-center bg-blue-100 text-blue-800 rounded-full px-3 py-1 text-xs font-medium hover:bg-blue-200 transition-colors">
                           {centro.nombre} ({centro.tipo})
                           <button
                             type="button"
                             className="ml-2 text-blue-800 hover:text-red-600 focus:outline-none"
                             onClick={e => {
                               e.stopPropagation();
-                              const nuevos = node.centrosCosto.filter(cid => cid !== id);
+                              // Eliminar por idNetsuite
+                              const nuevos = node.centrosCosto.filter(id => id !== netSuiteId);
                               actualizarNodo(node.id, { centrosCosto: nuevos });
                             }}
                             aria-label="Eliminar centro de costo"
@@ -318,7 +325,10 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
             {node.hijos.map((child) => (
               <TreeNode
                 key={child.id}
-                node={child}
+                node={{
+                  ...child,
+                  centrosCosto: child.centrosCosto || []
+                }}
                 level={level + 1}
                 centrosCostoDefault={centrosCostoDefault}
               />

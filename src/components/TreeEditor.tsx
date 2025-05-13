@@ -16,8 +16,8 @@ import {
 import { Button } from './ui/button';
 import { TreeNode } from './TreeNode';
 import { useAppStore } from '../store';
-import { Plus, Download, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
-import { exportarAExcel } from '../services/excel';
+import { Plus, Download, Check, X, ChevronDown, ChevronRight, Upload } from 'lucide-react';
+import { exportarAExcel, importFromExcel } from '../services/excel';
 import { Label } from './ui/label';
 import { Card } from './ui/card';
 import {
@@ -40,7 +40,8 @@ export const TreeEditor: React.FC = () => {
     formatoActual,
     agregarNodo,
     moverNodo,
-    centrosCosto
+    centrosCosto,
+    agregarFormato
   } = useAppStore();
 
   const [centrosCostoDefault, setCentrosCostoDefault] = useState<string[]>([]);
@@ -53,6 +54,9 @@ export const TreeEditor: React.FC = () => {
   const [missingCuentas, setMissingCuentas] = useState<string[]>([]);
   const [showMissingModal, setShowMissingModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const formato = formatos.find(f => f.id === formatoActual);
 
@@ -105,6 +109,33 @@ export const TreeEditor: React.FC = () => {
         return prev.filter(id => id !== centroId);
       }
     });
+  };
+
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportError(null);
+
+    try {
+      const { formato } = await importFromExcel({
+        file,
+        centrosCostoList: centrosCosto
+      });
+      
+      // Agregar el nuevo formato importado
+      agregarFormato(formato);
+      setShowImportModal(true);
+    } catch (error) {
+      console.error('Error al importar el archivo:', error);
+      setImportError(error instanceof Error ? error.message : 'Error desconocido al importar el archivo');
+      setShowImportModal(true);
+    } finally {
+      setIsImporting(false);
+      // Limpiar el input para permitir volver a seleccionar el mismo archivo
+      event.target.value = '';
+    }
   };
 
   const handleAddCuenta = (cuentas: CuentaContable[]) => {
@@ -258,14 +289,33 @@ export const TreeEditor: React.FC = () => {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">{formato.nombre}</h2>
           <div className="space-x-2">
-            <Button
-              onClick={() => agregarNodo(null, 'grupo', undefined, centrosCostoDefault)}
-              variant="outline"
-              size="sm"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Agregar Grupo
-            </Button>
+            <div className="inline-flex space-x-2">
+              <Button
+                onClick={() => agregarNodo(null, 'grupo', undefined, centrosCostoDefault)}
+                variant="outline"
+                size="sm"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Agregar Grupo
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isImporting}
+                onClick={() => document.getElementById('import-file')?.click()}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {isImporting ? 'Importando...' : 'Importar'}
+                <input
+                  id="import-file"
+                  type="file"
+                  accept=".xlsx"
+                  className="hidden"
+                  onChange={handleImport}
+                  disabled={isImporting}
+                />
+              </Button>
+            </div>
             <Button
               onClick={() => setShowCuentaSelector(true)}
               variant="outline"
@@ -325,7 +375,10 @@ export const TreeEditor: React.FC = () => {
               {formato.estructura.map((node) => (
                 <TreeNode
                   key={node.id}
-                  node={node}
+                  node={{
+                    ...node,
+                    centrosCosto: node.centrosCosto || []
+                  }}
                   level={0}
                   centrosCostoDefault={centrosCostoDefault}
                 />
@@ -372,6 +425,21 @@ export const TreeEditor: React.FC = () => {
           </div>
           <DialogFooter>
             <Button onClick={() => setShowExportModal(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de importación */}
+      <Dialog open={showImportModal} onOpenChange={setShowImportModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{importError ? 'Error en la importación' : 'Importación exitosa'}</DialogTitle>
+          </DialogHeader>
+          <div className={importError ? 'text-red-700' : 'text-green-700'}>
+            {importError || 'El formato se ha importado correctamente.'}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowImportModal(false)}>Cerrar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
