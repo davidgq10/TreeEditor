@@ -250,6 +250,19 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
         )}
 
         <div className="flex items-center gap-1">
+          {node.tipo === 'cuenta' && (
+            <div className="flex items-center space-x-2 mr-2">
+              <Label htmlFor={`invertir-${node.id}`} className="text-xs text-gray-600 whitespace-nowrap">
+                Invertir valor
+              </Label>
+              <Switch
+                id={`invertir-${node.id}`}
+                checked={node.invertirValor || false}
+                onCheckedChange={handleInvertirValorChange}
+                className="data-[state=checked]:bg-blue-600"
+              />
+            </div>
+          )}
           {node.tipo === 'grupo' && (
             <>
               <Button
