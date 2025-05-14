@@ -29,6 +29,7 @@ function createWindow() {
       sandbox: true,
       webSecurity: true
     },
+    icon: path.join(appPath, 'icon.ico'),
     autoHideMenuBar: true,
     show: false
   });

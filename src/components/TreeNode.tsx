@@ -93,7 +93,10 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
   };
 
   const toggleEdit = () => {
-    setIsEditing(!isEditing);
+    // Solo permitir edición de nombre para nodos tipo grupo
+    if (node.tipo === 'grupo') {
+      setIsEditing(!isEditing);
+    }
   };
 
   const handleSelectCuenta = (cuentas: CuentaContable[]) => {
@@ -198,7 +201,7 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
             className="h-8 focus:ring-2 focus:ring-blue-500"
           />
         ) : (
-          <div className="flex-1 cursor-pointer" onClick={toggleEdit}>
+          <div className="flex-1 cursor-pointer" onClick={toggleEdit} style={{ cursor: node.tipo === 'grupo' ? 'pointer' : 'default' }}>
             <div className="font-medium group-hover:text-gray-800 transition-colors">{node.nombre}</div>
             {node.tipo === 'cuenta' && (!node.centrosCosto || node.centrosCosto.length === 0) && (
               <div className="mt-1 text-xs text-red-700 font-semibold">Seleccione los centros de costo</div>
@@ -221,12 +224,12 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
                 </span>
                 {centrosCostoExpandido && node.centrosCosto && node.centrosCosto.length > 0 && (
                   <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto border rounded p-2 bg-gray-50/50 mt-1">
-                    {node.centrosCosto.map(netSuiteId => {
+                    {node.centrosCosto.map(centroId => {
                       // Buscar el centro de costo por idNetsuite
-                      const centro = centrosCosto.find(c => c.idNetsuite === netSuiteId);
+                      const centro = centrosCosto.find(c => c.idNetsuite === centroId);
                       
                       if (!centro) {
-                        console.warn(`No se encontró centro de costo con idNetsuite: ${netSuiteId}`);
+                        console.warn(`No se encontró centro de costo con idNetsuite: ${centroId}`);
                         return null;
                       }
                       
@@ -238,8 +241,8 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
                             className="ml-2 text-blue-800 hover:text-red-600 focus:outline-none"
                             onClick={e => {
                               e.stopPropagation();
-                              // Eliminar por idNetsuite
-                              const nuevos = node.centrosCosto.filter(id => id !== netSuiteId);
+                              // Eliminar el centro de costo de la lista
+                              const nuevos = node.centrosCosto.filter(id => id !== centroId);
                               actualizarNodo(node.id, { centrosCosto: nuevos });
                             }}
                             aria-label="Eliminar centro de costo"
@@ -266,7 +269,7 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
                 id={`invertir-${node.id}`}
                 checked={node.invertirValor || false}
                 onCheckedChange={handleInvertirValorChange}
-                className="data-[state=checked]:bg-blue-600"
+                className="switch-root"
               />
             </div>
           )}

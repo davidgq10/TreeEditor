@@ -1,0 +1,89 @@
+:root {
+  --theme-primary: #1E40AF;
+  --theme-primary-rgb: 30, 64, 175;
+  --theme-primary-lighter: rgba(30, 64, 175, 0.1);
+  --theme-primary-darker: #15307c;
+}
+
+/* Aplicar los colores del tema a elementos de la interfaz */
+.bg-primary {
+  background-color: var(--theme-primary) !important;
+}
+
+.text-primary {
+  color: var(--theme-primary) !important;
+}
+
+.border-primary {
+  border-color: var(--theme-primary) !important;
+}
+
+/* Estilos para los botones */
+button[data-variant="default"] {
+  background-color: var(--theme-primary);
+}
+
+button[data-variant="default"]:hover {
+  background-color: var(--theme-primary-darker);
+}
+
+/* Estilos para botones de acción en listas */
+button.hover\:bg-blue-50:hover {
+  background-color: var(--theme-primary-lighter) !important;
+  color: var(--theme-primary) !important;
+}
+
+/* Color de iconos de editar */
+button svg.w-4.h-4 {
+  transition: color 0.2s ease;
+}
+
+button.hover\:text-blue-600:hover svg {
+  color: var(--theme-primary) !important;
+}
+
+/* Estilos para enlaces y acentos */
+a, .accent-color {
+  color: var(--theme-primary);
+}
+
+/* Estilo para el switch/toggle cuando está activado */
+[data-state="checked"].switch-root {
+  background-color: var(--theme-primary) !important;
+}
+
+/* Efectos hover para elementos interactivos */
+.hover-effect:hover {
+  background-color: var(--theme-primary-lighter);
+}
+
+/* Estilos para selección y foco */
+.ring-primary {
+  --tw-ring-color: var(--theme-primary);
+}
+
+.focus-visible\:ring-primary:focus-visible {
+  --tw-ring-color: var(--theme-primary);
+}
+
+/* Acentos y bordes */
+.border-accent {
+  border-color: var(--theme-primary);
+}
+
+/* Elementos seleccionados o activos */
+.active-item {
+  background-color: var(--theme-primary-lighter);
+  border-color: var(--theme-primary);
+}
+
+/* Añadir color a botones de acción por defecto */
+button.hover\:text-blue-600 {
+  color: rgba(var(--theme-primary-rgb), 0.7);
+}
+
+/* Aplicación del tema a títulos principales */
+h1.text-theme-primary {
+  color: var(--theme-primary);
+  transition: color 0.3s ease;
+}

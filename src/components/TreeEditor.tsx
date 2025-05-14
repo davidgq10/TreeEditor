@@ -189,7 +189,7 @@ export const TreeEditor: React.FC = () => {
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() => setCentrosCostoDefault(centrosCosto.map(c => c.id))}
+                    onClick={() => setCentrosCostoDefault(centrosCosto.filter(c => c.idNetsuite).map(c => c.idNetsuite as string))}
                   >
                     Seleccionar todo
                   </Button>
@@ -207,8 +207,8 @@ export const TreeEditor: React.FC = () => {
                     <div key={centro.id} className="flex items-center space-x-2">
                       <Checkbox
                         id={centro.id}
-                        checked={centrosCostoDefault.includes(centro.id)}
-                        onCheckedChange={(checked) => handleCentroCostoChange(centro.id, checked as boolean)}
+                        checked={centro.idNetsuite ? centrosCostoDefault.includes(centro.idNetsuite) : false}
+                        onCheckedChange={(checked) => centro.idNetsuite && handleCentroCostoChange(centro.idNetsuite, checked as boolean)}
                       />
                       <label
                         htmlFor={centro.id}
@@ -259,7 +259,7 @@ export const TreeEditor: React.FC = () => {
               {centrosCostoExpandido && (
                 <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto border rounded p-2 bg-gray-50">
                   {centrosCostoDefault.map((id) => {
-                    const centro = centrosCosto.find((c) => c.id === id);
+                    const centro = centrosCosto.find((c) => c.idNetsuite === id);
                     if (!centro) return null;
                     return (
                       <span
@@ -289,33 +289,14 @@ export const TreeEditor: React.FC = () => {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">{formato.nombre}</h2>
           <div className="space-x-2">
-            <div className="inline-flex space-x-2">
-              <Button
-                onClick={() => agregarNodo(null, 'grupo', undefined, centrosCostoDefault)}
-                variant="outline"
-                size="sm"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Agregar Grupo
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isImporting}
-                onClick={() => document.getElementById('import-file')?.click()}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                {isImporting ? 'Importando...' : 'Importar'}
-                <input
-                  id="import-file"
-                  type="file"
-                  accept=".xlsx"
-                  className="hidden"
-                  onChange={handleImport}
-                  disabled={isImporting}
-                />
-              </Button>
-            </div>
+            <Button
+              onClick={() => agregarNodo(null, 'grupo', undefined, centrosCostoDefault)}
+              variant="outline"
+              size="sm"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Agregar Grupo
+            </Button>
             <Button
               onClick={() => setShowCuentaSelector(true)}
               variant="outline"
@@ -377,7 +358,12 @@ export const TreeEditor: React.FC = () => {
                   key={node.id}
                   node={{
                     ...node,
-                    centrosCosto: node.centrosCosto || []
+                    // Asegurarse que centrosCosto sea siempre un array y contenga idNetsuite válidos
+                    centrosCosto: (node.centrosCosto || [])
+                      .filter(id => {
+                        // Verificar si el id es un idNetsuite válido
+                        return centrosCosto.some(c => c.idNetsuite === id);
+                      })
                   }}
                   level={0}
                   centrosCostoDefault={centrosCostoDefault}

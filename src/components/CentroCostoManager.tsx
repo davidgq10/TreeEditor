@@ -250,7 +250,8 @@ export const CentroCostoManager: React.FC = () => {
     const informesUsandoCentro = formatos.filter(formato => {
       const buscarCentroEnNodos = (nodos: Nodo[]): boolean => {
         return nodos.some(nodo => {
-          if (nodo.centrosCosto && nodo.centrosCosto.includes(centro.id)) {
+          // Verificar si el centro de costo está siendo utilizado por su idNetsuite
+          if (nodo.centrosCosto && centro.idNetsuite && nodo.centrosCosto.includes(centro.idNetsuite)) {
             return true;
           }
           if (nodo.hijos.length > 0) {
@@ -392,30 +393,32 @@ export const CentroCostoManager: React.FC = () => {
         <table className="w-full">
           <tbody>
             {getSortedCentrosCosto().map((centro) => (
-              <tr key={centro.id} className="border-t border-gray-200">
+              <tr key={centro.id} className="border-t border-gray-200 hover:bg-gray-50 transition-colors duration-150">
                 <td className="px-4 py-2">{centro.idNetsuite}</td>
                 <td className="px-4 py-2">{centro.nombre}</td>
                 <td className="px-4 py-2">{centro.tipo}</td>
-                <td className="px-4 py-2 text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditingCentro(centro);
-                      setIsAddCentroDialogOpen(true);
-                    }}
-                    className="mr-2"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteCentro(centro)}
-                    className="hover:bg-red-50 hover:text-red-600"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                <td className="px-4 py-2 text-right whitespace-nowrap">
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setEditingCentro(centro);
+                        setIsAddCentroDialogOpen(true);
+                      }}
+                      className="hover:bg-blue-50 hover:text-blue-600 transition-colors duration-150"
+                    >
+                      <Pencil className="w-4 h-4" style={{ color: 'var(--theme-primary)' }} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteCentro(centro)}
+                      className="hover:bg-red-50 hover:text-red-600 transition-colors duration-150"
+                    >
+                      <Trash2 className="w-4 h-4" style={{ color: 'var(--theme-primary)' }} />
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))}

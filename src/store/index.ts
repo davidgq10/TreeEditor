@@ -191,13 +191,20 @@ const createStore = () => create<AppState>((set) => ({
 
   agregarNodo: (parentId, tipo, cuenta?: CuentaContable, centrosCosto?: string[]) => {
     set((state) => {
+      // Filtrar los centros de costo para asegurar que solo se incluyan idNetsuite válidos
+      const centrosCostoValidos = centrosCosto?.filter(id => {
+        // Verificar que sea un idNetsuite válido en la lista de centros de costo
+        return state.centrosCosto.some(c => c.idNetsuite === id);
+      }) || [];
+
       const nuevoNodo: Nodo = {
         id: uuidv4(),
         tipo,
         nombre: tipo === 'grupo' ? 'Nuevo Grupo' : cuenta?.nombre || 'Nueva Cuenta',
         cuenta: tipo === 'cuenta' ? cuenta : undefined,
+        cuentaId: tipo === 'cuenta' ? cuenta?.id : undefined,
         hijos: [],
-        centrosCosto: centrosCosto || []
+        centrosCosto: tipo === 'cuenta' ? centrosCostoValidos : []
       };
 
       const actualizarNodos = (nodos: Nodo[]): Nodo[] => {

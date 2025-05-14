@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TreeEditor } from './components/TreeEditor';
 import { CatalogManager } from './components/CatalogManager';
 import { CentroCostoManager } from './components/CentroCostoManager';
@@ -8,6 +8,8 @@ import { useAppStore } from './store';
 import { Plus, Book, Pencil, Trash2, Building2, FileText, Upload } from 'lucide-react';
 import { Formato } from './types';
 import { importFromExcel } from './services/excel';
+import { ThemeSelector } from './components/ThemeSelector';
+import './theme.css';
 import {
   Dialog,
   DialogContent,
@@ -132,30 +134,51 @@ export const App: React.FC = () => {
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-3">
               <img src={logoSpoon} alt="Logo Spoon" style={{ height: '40px', width: 'auto' }} className="block" />
-              <h1 className="text-xl font-bold text-gray-900">Editor de Formatos Financieros</h1>
+              <h1 className="text-xl font-bold text-theme-primary">Editor de Formatos Financieros</h1>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={!showCatalog && !showCentrosCosto ? "default" : "outline"}
-                onClick={() => handleViewChange('formatos')}
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Formatos
-              </Button>
-              <Button
-                variant={showCatalog ? "default" : "outline"}
-                onClick={() => handleViewChange('catalogo')}
-              >
-                <Book className="w-4 h-4 mr-2" />
-                Cuentas contables
-              </Button>
-              <Button
-                variant={showCentrosCosto ? "default" : "outline"}
-                onClick={() => handleViewChange('centros')}
-              >
-                <Building2 className="w-4 h-4 mr-2" />
-                Centros de Costo
-              </Button>
+            <div className="flex items-center gap-6">
+              <div className="relative">
+                <button
+                  className={`flex items-center px-4 py-2 ${!showCatalog && !showCentrosCosto ? 'font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+                  style={!showCatalog && !showCentrosCosto ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
+                  onClick={() => handleViewChange('formatos')}
+                >
+                  <FileText 
+                    className="w-4 h-4 mr-2" 
+                    style={!showCatalog && !showCentrosCosto ? { color: 'var(--theme-primary)' } : {}} 
+                  />
+                  Formatos
+                </button>
+              </div>
+              <div className="relative">
+                <button
+                  className={`flex items-center px-4 py-2 ${showCatalog ? 'font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+                  style={showCatalog ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
+                  onClick={() => handleViewChange('catalogo')}
+                >
+                  <Book 
+                    className="w-4 h-4 mr-2" 
+                    style={showCatalog ? { color: 'var(--theme-primary)' } : {}} 
+                  />
+                  Cuentas contables
+                </button>
+              </div>
+              <div className="relative">
+                <button
+                  className={`flex items-center px-4 py-2 ${showCentrosCosto ? 'font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+                  style={showCentrosCosto ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
+                  onClick={() => handleViewChange('centros')}
+                >
+                  <Building2 
+                    className="w-4 h-4 mr-2" 
+                    style={showCentrosCosto ? { color: 'var(--theme-primary)' } : {}} 
+                  />
+                  Centros de Costo
+                </button>
+              </div>
+              <div className="ml-4">
+                <ThemeSelector />
+              </div>
             </div>
           </div>
         </div>
@@ -167,12 +190,12 @@ export const App: React.FC = () => {
         ) : showCentrosCosto ? (
           <CentroCostoManager />
         ) : (
-          <div className="grid grid-cols-12 gap-6">
+          <div className="flex flex-col md:flex-row gap-7">
             {/* Lista de Formatos */}
-            <div className="col-span-4">
-              <div className="bg-white rounded-lg shadow p-4">
+            <div className="md:w-1/2 lg:w-1/3 flex-shrink-0">
+              <div className="bg-white rounded-lg shadow p-4 sticky top-24">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-lg font-semibold">Formatos</h2>
+                  <h2 className="text-lg font-semibold mr-2">Formatos</h2>
                   <div className="flex gap-2">
                     <Dialog open={showNewFormDialog} onOpenChange={setShowNewFormDialog}>
                       <DialogTrigger asChild>
@@ -227,7 +250,7 @@ export const App: React.FC = () => {
                       key={formato.id}
                       className={`
                         flex justify-between items-center p-2 rounded
-                        ${formatoActual === formato.id ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}
+                        ${formatoActual === formato.id ? 'active-item' : 'hover-effect'}
                         cursor-pointer border
                       `}
                       onClick={() => seleccionarFormato(formato.id)}
@@ -262,7 +285,7 @@ export const App: React.FC = () => {
             </div>
 
             {/* Editor de Árbol */}
-            <div className="col-span-10 bg-white rounded-lg shadow">
+            <div className="flex-grow bg-white rounded-lg shadow overflow-hidden" style={{ width: 'calc(100% + 20%)' }}>
               <TreeEditor />
             </div>
           </div>

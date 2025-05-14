@@ -86,7 +86,7 @@ export const CentroCostoSelector: React.FC<CentroCostoSelectorProps> = ({
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => setCentrosSeleccionados(centrosCosto.map(c => c.id))}
+              onClick={() => setCentrosSeleccionados(centrosCosto.filter(c => c.idNetsuite).map(c => c.idNetsuite as string))}
             >
               Seleccionar todo
             </Button>
@@ -114,8 +114,8 @@ export const CentroCostoSelector: React.FC<CentroCostoSelectorProps> = ({
             <div key={centro.id} className="flex items-center space-x-2">
               <Checkbox
                 id={centro.id}
-                checked={centrosSeleccionados.includes(centro.id)}
-                onCheckedChange={(checked) => handleCentroCostoChange(centro.id, checked as boolean)}
+                checked={centro.idNetsuite ? centrosSeleccionados.includes(centro.idNetsuite) : false}
+                onCheckedChange={(checked) => centro.idNetsuite && handleCentroCostoChange(centro.idNetsuite, checked as boolean)}
               />
               <label
                 htmlFor={centro.id}

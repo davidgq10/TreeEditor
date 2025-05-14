@@ -224,7 +224,13 @@ export const CatalogManager: React.FC = () => {
     const informesUsandoCuenta = formatos.filter(formato => {
       const buscarCuentaEnNodos = (nodos: Nodo[]): boolean => {
         for (const nodo of nodos) {
-          if (nodo.tipo === 'cuenta' && (nodo.cuentaId === cuenta.id || nodo.cuenta?.id === cuenta.id)) {
+          // Verificar si la cuenta está siendo utilizada - usando múltiples campos posibles para la comparación
+          if (nodo.tipo === 'cuenta' && (
+            nodo.cuentaId === cuenta.id || 
+            nodo.cuenta?.id === cuenta.id ||
+            nodo.cuentaId === cuenta.codigo || 
+            nodo.cuenta?.codigo === cuenta.codigo
+          )) {
             return true;
           }
           if (nodo.hijos && nodo.hijos.length > 0) {
@@ -430,28 +436,30 @@ export const CatalogManager: React.FC = () => {
           <tbody>
             {getSortedAndFilteredCuentas().map((cuenta) => {
               return (
-                <tr key={cuenta.id} className="border-t">
+                <tr key={cuenta.id} className="border-t hover:bg-gray-50 transition-colors duration-150">
                   <td className="px-4 py-2">{cuenta.codigo}</td>
                   <td className="px-4 py-2">{cuenta.nombre}</td>
                   <td className="px-4 py-2">{`${cuenta.codigo} ${cuenta.nombre}`}</td>
                   <td className="px-4 py-2 capitalize">{cuenta.naturaleza}</td>
-                  <td className="px-4 py-2 text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditingCuenta(cuenta)}
-                      className="mr-2"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteCuenta(cuenta)}
-                      className="hover:bg-red-50 hover:text-red-600"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                  <td className="px-4 py-2 text-right whitespace-nowrap">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditingCuenta(cuenta)}
+                        className="hover:bg-blue-50 hover:text-blue-600 transition-colors duration-150"
+                      >
+                        <Pencil className="w-4 h-4" style={{ color: 'var(--theme-primary)' }} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteCuenta(cuenta)}
+                        className="hover:bg-red-50 hover:text-red-600 transition-colors duration-150"
+                      >
+                        <Trash2 className="w-4 h-4" style={{ color: 'var(--theme-primary)' }} />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               );

@@ -288,8 +288,13 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
       nodesByLevel[currentLevel].push(node);
       
       // Actualizar la pila de padres
-      parentStack.length = currentLevel;
-      if (parentStack.length > 0) {
+      // Asegurar que solo se eliminen elementos si el nuevo nivel es menor
+      if (currentLevel < parentStack.length) {
+        parentStack.length = currentLevel;
+      }
+      
+      // Verificar que exista un elemento antes de acceder a sus propiedades
+      if (parentStack.length > 0 && parentStack[parentStack.length - 1] && parentStack[parentStack.length - 1].node) {
         parentStack[parentStack.length - 1].node.hijos.push(node);
       } else {
         formato.estructura.push(node);
@@ -313,8 +318,13 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
       nodesByLevel[currentLevel].push(node);
       
       // Actualizar la pila de padres
-      parentStack.length = currentLevel;
-      if (parentStack.length > 0) {
+      // Asegurar que solo se eliminen elementos si el nuevo nivel es menor
+      if (currentLevel < parentStack.length) {
+        parentStack.length = currentLevel;
+      }
+      
+      // Verificar que exista un elemento antes de acceder a sus propiedades
+      if (parentStack.length > 0 && parentStack[parentStack.length - 1] && parentStack[parentStack.length - 1].node) {
         parentStack[parentStack.length - 1].node.hijos.push(node);
       } else {
         formato.estructura.push(node);

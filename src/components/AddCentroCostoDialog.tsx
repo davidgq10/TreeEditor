@@ -97,7 +97,7 @@ export const AddCentroCostoDialog: React.FC<AddCentroCostoDialogProps> = ({
 
   // Validación de campos
   const validateIdNetsuite = (idNetsuite: string | undefined) => {
-    if (!idNetsuite) return 'El ID Netsuite es obligatorio';
+    if (!idNetsuite) return 'El campo ID Netsuite es obligatorio';
     if (!/^[1-9][0-9]*$/.test(idNetsuite)) return 'El ID Netsuite debe ser un número entero positivo';
     const idExists = centrosCosto.some(c => c.idNetsuite === idNetsuite && (!centroToEdit || c.id !== centroToEdit.id));
     if (idExists) return 'El ID Netsuite ya existe';
@@ -105,12 +105,12 @@ export const AddCentroCostoDialog: React.FC<AddCentroCostoDialogProps> = ({
   };
   
   const validateNombre = (nombre: string | undefined) => {
-    if (!nombre || !nombre.trim()) return 'Este campo es obligatorio';
+    if (!nombre || !nombre.trim()) return 'El campo Nombre es obligatorio';
     return null;
   };
   
   const validateTipo = (tipo: string | undefined) => {
-    if (!tipo || !tipo.trim()) return 'Este campo es obligatorio';
+    if (!tipo || !tipo.trim()) return 'El campo Tipo es obligatorio';
     return null;
   };
 

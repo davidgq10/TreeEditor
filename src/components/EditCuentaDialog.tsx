@@ -51,9 +51,9 @@ export const EditCuentaDialog: React.FC<EditCuentaDialogProps> = ({
     
     // Validar campos obligatorios
     const newErrors = {
-      codigo: !formData.codigo ? 'Este campo es obligatorio' : null,
-      nombre: !formData.nombre ? 'Este campo es obligatorio' : null,
-      naturaleza: !formData.naturaleza ? 'Este campo es obligatorio' : null
+      codigo: !formData.codigo ? 'El campo Código es obligatorio' : null,
+      nombre: !formData.nombre ? 'El campo Nombre es obligatorio' : null,
+      naturaleza: !formData.naturaleza ? 'El campo Tipo es obligatorio' : null
     };
     
     setFormErrors(newErrors);
@@ -82,7 +82,7 @@ export const EditCuentaDialog: React.FC<EditCuentaDialogProps> = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
-            <label className="block text-sm font-medium mb-1">Código</label>
+            <label className="block text-sm font-medium mb-1">Código *</label>
             <Input
               type="text"
               placeholder="Código"
@@ -98,7 +98,7 @@ export const EditCuentaDialog: React.FC<EditCuentaDialogProps> = ({
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Nombre</label>
+            <label className="block text-sm font-medium mb-1">Nombre *</label>
             <Input
               type="text"
               placeholder="Nombre"
@@ -114,7 +114,7 @@ export const EditCuentaDialog: React.FC<EditCuentaDialogProps> = ({
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Tipo</label>
+            <label className="block text-sm font-medium mb-1">Tipo *</label>
             <Select
               value={formData.naturaleza}
               onValueChange={(value: 'ingreso' | 'gasto') => {
