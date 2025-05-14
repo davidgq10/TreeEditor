@@ -5,8 +5,9 @@ import { CentroCostoManager } from './components/CentroCostoManager';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { useAppStore } from './store';
-import { Plus, Book, Pencil, Trash2, Building2, FileText } from 'lucide-react';
+import { Plus, Book, Pencil, Trash2, Building2, FileText, Upload } from 'lucide-react';
 import { Formato } from './types';
+import { importFromExcel } from './services/excel';
 import {
   Dialog,
   DialogContent,
@@ -25,6 +26,9 @@ export const App: React.FC = () => {
   const [newFormName, setNewFormName] = useState('');
   const [editingFormId, setEditingFormId] = useState<string | null>(null);
   const [editingFormName, setEditingFormName] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
   const {
     formatos,
     formatoActual,
@@ -33,17 +37,6 @@ export const App: React.FC = () => {
     eliminarFormato,
     actualizarFormato
   } = useAppStore();
-  const [deleteConfirmation, setDeleteConfirmation] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    onConfirm: () => void;
-  }>({
-    isOpen: false,
-    title: '',
-    message: '',
-    onConfirm: () => {}
-  });
 
   const handleNewFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,6 +77,53 @@ export const App: React.FC = () => {
     setShowCatalog(view === 'catalogo');
     setShowCentrosCosto(view === 'centros');
   };
+
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportError(null);
+
+    try {
+      const { formato } = await importFromExcel({
+        file,
+        centrosCostoList: useAppStore.getState().centrosCosto
+      });
+      
+      // Obtener el nombre del archivo sin la extensión
+      const fileName = file.name.replace(/\.xlsx?$/i, '');
+      // Crear un nuevo formato con el nombre del archivo
+      const nuevoFormato = {
+        ...formato,
+        nombre: fileName
+      };
+      
+      // Agregar el nuevo formato importado
+      agregarFormato(nuevoFormato);
+      setShowImportModal(true);
+    } catch (error) {
+      console.error('Error al importar el archivo:', error);
+      setImportError(error instanceof Error ? error.message : 'Error desconocido al importar el archivo');
+      setShowImportModal(true);
+    } finally {
+      setIsImporting(false);
+      // Limpiar el input para permitir volver a seleccionar el mismo archivo
+      event.target.value = '';
+    }
+  };
+
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -129,37 +169,56 @@ export const App: React.FC = () => {
         ) : (
           <div className="grid grid-cols-12 gap-6">
             {/* Lista de Formatos */}
-            <div className="col-span-3">
+            <div className="col-span-4">
               <div className="bg-white rounded-lg shadow p-4">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-lg font-semibold">Formatos</h2>
-                  <Dialog open={showNewFormDialog} onOpenChange={setShowNewFormDialog}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Nuevo
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[600px]">
-                      <DialogHeader>
-                        <DialogTitle>Nuevo Formato</DialogTitle>
-                      </DialogHeader>
-                      <form onSubmit={handleNewFormSubmit} className="space-y-4">
-                        <div>
-                          <Input
-                            type="text"
-                            placeholder="Nombre del formato"
-                            value={newFormName}
-                            onChange={(e) => setNewFormName(e.target.value)}
-                            className="w-full"
-                          />
-                        </div>
-                        <div className="flex justify-end">
-                          <Button type="submit">Crear</Button>
-                        </div>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
+                  <div className="flex gap-2">
+                    <Dialog open={showNewFormDialog} onOpenChange={setShowNewFormDialog}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <Plus className="w-4 h-4 mr-2" />
+                          Nuevo
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[600px]">
+                        <DialogHeader>
+                          <DialogTitle>Nuevo Formato</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={handleNewFormSubmit} className="space-y-4">
+                          <div>
+                            <Input
+                              type="text"
+                              placeholder="Nombre del formato"
+                              value={newFormName}
+                              onChange={(e) => setNewFormName(e.target.value)}
+                              className="w-full"
+                            />
+                          </div>
+                          <div className="flex justify-end">
+                            <Button type="submit">Crear</Button>
+                          </div>
+                        </form>
+                      </DialogContent>
+                    </Dialog>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isImporting}
+                      onClick={() => document.getElementById('import-file')?.click()}
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      {isImporting ? 'Importando...' : 'Importar'}
+                      <input
+                        id="import-file"
+                        type="file"
+                        accept=".xlsx"
+                        className="hidden"
+                        onChange={handleImport}
+                        disabled={isImporting}
+                      />
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -203,7 +262,7 @@ export const App: React.FC = () => {
             </div>
 
             {/* Editor de Árbol */}
-            <div className="col-span-9 bg-white rounded-lg shadow">
+            <div className="col-span-10 bg-white rounded-lg shadow">
               <TreeEditor />
             </div>
           </div>
@@ -240,6 +299,21 @@ export const App: React.FC = () => {
         title={deleteConfirmation.title}
         message={deleteConfirmation.message}
       />
+
+      <Dialog open={showImportModal} onOpenChange={setShowImportModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{importError ? 'Error al importar' : 'Importación exitosa'}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            {importError ? (
+              <p className="text-red-600">{importError}</p>
+            ) : (
+              <p>El formato se ha importado correctamente.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
-}; 
+};
