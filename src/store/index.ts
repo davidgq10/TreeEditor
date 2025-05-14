@@ -39,31 +39,77 @@ interface AppState {
   eliminarCentroCosto: (id: string) => void;
 }
 
-// Cargar datos iniciales del store
-let formatosGuardados: Formato[] = [];
-let formatoActualGuardado: string | null = null;
-let cuentasGuardadas: CuentaContable[] = [];
-let centrosCostoGuardados: CentroCosto[] = [];
-let centrosCostoDefaultGuardados: string[] = [];
+// Función para inicializar el store
+const initializeStore = async () => {
+  let formatosGuardados: Formato[] = [];
+  let formatoActualGuardado: string | null = null;
+  let cuentasGuardadas: CuentaContable[] = [];
+  let centrosCostoGuardados: CentroCosto[] = [];
+  let centrosCostoDefaultGuardados: string[] = [];
 
-// Cargar datos del store de Electron
-if (window.electronAPI) {
-  Promise.all([
-    window.electronAPI.store.get('formatos'),
-    window.electronAPI.store.get('formatoActual'),
-    window.electronAPI.store.get('cuentas'),
-    window.electronAPI.store.get('centrosCosto'),
-    window.electronAPI.store.get('centrosCostoDefault')
-  ]).then(([formatos, formatoActual, cuentas, centrosCosto, centrosCostoDefault]) => {
-    formatosGuardados = formatos || [];
-    formatoActualGuardado = formatoActual || null;
-    cuentasGuardadas = cuentas || [];
-    centrosCostoGuardados = centrosCosto || [];
-    centrosCostoDefaultGuardados = centrosCostoDefault || [];
-  });
-}
+  // Cargar datos del store de Electron
+  if (window.electronAPI) {
+    try {
+      // Cargar datos de manera asíncrona
+      const [formatos, formatoActual, cuentas, centrosCosto, centrosCostoDefault] = await Promise.all([
+        window.electronAPI.store.get('formatos'),
+        window.electronAPI.store.get('formatoActual'),
+        window.electronAPI.store.get('cuentas'),
+        window.electronAPI.store.get('centrosCosto'),
+        window.electronAPI.store.get('centrosCostoDefault')
+      ]);
 
-export const useAppStore = create<AppState>((set) => ({
+      // Asignar valores o defaults si son nulos
+      formatosGuardados = formatos || [];
+      formatoActualGuardado = formatoActual || null;
+      cuentasGuardadas = cuentas || [];
+      centrosCostoGuardados = centrosCosto || [];
+      centrosCostoDefaultGuardados = centrosCostoDefault || [];
+
+      // Actualizar el store con los datos cargados
+      if (storeInstance) {
+        storeInstance.setState({
+          formatos: formatosGuardados,
+          formatoActual: formatoActualGuardado,
+          cuentas: cuentasGuardadas,
+          centrosCosto: centrosCostoGuardados,
+          centrosCostoDefault: centrosCostoDefaultGuardados
+        });
+      }
+    } catch (error) {
+      console.error('Error al cargar datos desde electron-store:', error);
+    }
+  }
+
+  return {
+    formatosGuardados,
+    formatoActualGuardado,
+    cuentasGuardadas,
+    centrosCostoGuardados,
+    centrosCostoDefaultGuardados
+  };
+};
+
+// Inicializar con valores vacíos por defecto
+let {
+  formatosGuardados,
+  formatoActualGuardado,
+  cuentasGuardadas,
+  centrosCostoGuardados,
+  centrosCostoDefaultGuardados
+} = {
+  formatosGuardados: [],
+  formatoActualGuardado: null,
+  cuentasGuardadas: [],
+  centrosCostoGuardados: [],
+  centrosCostoDefaultGuardados: []
+};
+
+// Variable para hacer referencia al store
+let storeInstance: ReturnType<typeof createStore> | null = null;
+
+// Función para crear el store
+const createStore = () => create<AppState>((set) => ({
   formatos: formatosGuardados,
   formatoActual: formatoActualGuardado,
   cuentas: cuentasGuardadas,
@@ -411,4 +457,13 @@ export const useAppStore = create<AppState>((set) => ({
       return newState;
     });
   }
-})); 
+}));
+
+// Crear el store
+export const useAppStore = createStore();
+
+// Asignar la instancia para poder actualizarla después
+storeInstance = useAppStore;
+
+// Inicializar el store con los datos persistentes
+initializeStore();

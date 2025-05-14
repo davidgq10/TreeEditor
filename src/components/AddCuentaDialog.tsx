@@ -81,6 +81,15 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
     nombre: '',
     naturaleza: 'gasto'
   });
+  const [formErrors, setFormErrors] = useState<{
+    codigo: string | null;
+    nombre: string | null;
+    naturaleza: string | null;
+  }>({
+    codigo: null,
+    nombre: null,
+    naturaleza: null
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddTipoDialogOpen, setIsAddTipoDialogOpen] = useState(false);
   const [tiposCuenta, setTiposCuenta] = useState<Set<string>>(new Set());
@@ -112,12 +121,24 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
         nombre: cuentaToEdit.nombre,
         naturaleza: cuentaToEdit.naturaleza
       });
+      // Limpiar errores al cargar datos
+      setFormErrors({
+        codigo: null,
+        nombre: null,
+        naturaleza: null
+      });
       if (centrosCosto && centrosCostoDefault && setCentrosSeleccionados) setCentrosSeleccionados(centrosCostoDefault);
     } else {
       setFormData({
         codigo: '',
         nombre: '',
         naturaleza: 'gasto'
+      });
+      // Limpiar errores al resetear el formulario
+      setFormErrors({
+        codigo: null,
+        nombre: null,
+        naturaleza: null
       });
       if (centrosCosto && centrosCostoDefault && setCentrosSeleccionados) setCentrosSeleccionados(centrosCostoDefault);
     }
@@ -127,10 +148,20 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    
+    // Inicializar los errores de validación
+    const newErrors = {
+      codigo: !formData.codigo ? 'Este campo es obligatorio' : null,
+      nombre: !formData.nombre ? 'Este campo es obligatorio' : null,
+      naturaleza: !formData.naturaleza ? 'Este campo es obligatorio' : null
+    };
+    
+    setFormErrors(newErrors);
 
     try {
-      if (!formData.codigo || !formData.nombre || !formData.naturaleza) {
-        throw new Error('Todos los campos son requeridos');
+      // Verificar si hay algún error de validación
+      if (newErrors.codigo || newErrors.nombre || newErrors.naturaleza) {
+        return;
       }
 
       // Validar código duplicado
@@ -140,7 +171,10 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
       );
 
       if (codigoExistente) {
-        setError('Ya existe una cuenta con este código');
+        setFormErrors(prev => ({
+          ...prev,
+          codigo: 'Ya existe una cuenta con este código'
+        }));
         return;
       }
 
@@ -179,6 +213,11 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
             nombre: '',
             naturaleza: 'gasto'
           });
+          setFormErrors({
+            codigo: null,
+            nombre: null,
+            naturaleza: null
+          });
           setError(null);
           onClose();
         }
@@ -187,7 +226,7 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
           <DialogHeader>
             <DialogTitle>{cuentaToEdit ? 'Editar Cuenta' : 'Nueva Cuenta'}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div>
               <label htmlFor="codigo" className="block text-sm font-medium mb-1">
                 Código
@@ -198,12 +237,12 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
                 value={formData.codigo}
                 onChange={(e) => {
                   setFormData(prev => ({ ...prev, codigo: e.target.value }));
+                  setFormErrors(prev => ({ ...prev, codigo: null }));
                   setError(null);
                 }}
-                className={error ? 'border-red-500' : ''}
-                required
+                className={formErrors.codigo ? 'border-red-500' : ''}
               />
-              {error && <p className="mt-1 text-sm text-red-500">{error}</p>}
+              {formErrors.codigo && <p className="mt-1 text-sm text-red-500">{formErrors.codigo}</p>}
             </div>
             <div>
               <label htmlFor="nombre" className="block text-sm font-medium mb-1">
@@ -213,9 +252,13 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
                 id="nombre"
                 placeholder="Ingrese el nombre"
                 value={formData.nombre}
-                onChange={(e) => setFormData(prev => ({ ...prev, nombre: e.target.value }))}
-                required
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, nombre: e.target.value }));
+                  setFormErrors(prev => ({ ...prev, nombre: null }));
+                }}
+                className={formErrors.nombre ? 'border-red-500' : ''}
               />
+              {formErrors.nombre && <p className="mt-1 text-sm text-red-500">{formErrors.nombre}</p>}
             </div>
             <div>
               <label htmlFor="naturaleza" className="block text-sm font-medium mb-1">
@@ -224,8 +267,12 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
               <div className="flex gap-2">
                 <Select
                   value={formData.naturaleza}
-                  onValueChange={(value: string) => setFormData(prev => ({ ...prev, naturaleza: value as 'gasto' | 'ingreso' }))}
+                  onValueChange={(value: string) => {
+                    setFormData(prev => ({ ...prev, naturaleza: value as 'gasto' | 'ingreso' }));
+                    setFormErrors(prev => ({ ...prev, naturaleza: null }));
+                  }}
                 >
+
                   <SelectTrigger>
                     {formData.naturaleza.charAt(0).toUpperCase() + formData.naturaleza.slice(1)}
                   </SelectTrigger>

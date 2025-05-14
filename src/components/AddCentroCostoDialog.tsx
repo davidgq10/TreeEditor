@@ -52,7 +52,15 @@ export const AddCentroCostoDialog: React.FC<AddCentroCostoDialogProps> = ({
     nombre: '',
     tipo: ''
   });
-  const [idError, setIdError] = useState<string | null>(null);
+  const [formErrors, setFormErrors] = useState<{
+    idNetsuite: string | null;
+    nombre: string | null;
+    tipo: string | null;
+  }>({
+    idNetsuite: null,
+    nombre: null,
+    tipo: null
+  });
 
   // Estado para manejar los tipos de centros de costo disponibles
   const [tiposCentro, setTiposCentro] = useState<Set<string>>(new Set(['LOCALES', 'COMERCIAL', 'PRODUCCION', 'CDA']));
@@ -79,32 +87,60 @@ export const AddCentroCostoDialog: React.FC<AddCentroCostoDialogProps> = ({
         tipo: ''
       });
     }
-    setIdError(null);
+    // Limpiar todos los errores
+    setFormErrors({
+      idNetsuite: null,
+      nombre: null,
+      tipo: null
+    });
   }, [centroToEdit]);
 
-  // Validación de idNetsuite
-  const validateIdNetsuite = (idNetsuite: string) => {
+  // Validación de campos
+  const validateIdNetsuite = (idNetsuite: string | undefined) => {
     if (!idNetsuite) return 'El ID Netsuite es obligatorio';
     if (!/^[1-9][0-9]*$/.test(idNetsuite)) return 'El ID Netsuite debe ser un número entero positivo';
     const idExists = centrosCosto.some(c => c.idNetsuite === idNetsuite && (!centroToEdit || c.id !== centroToEdit.id));
     if (idExists) return 'El ID Netsuite ya existe';
     return null;
   };
+  
+  const validateNombre = (nombre: string | undefined) => {
+    if (!nombre || !nombre.trim()) return 'Este campo es obligatorio';
+    return null;
+  };
+  
+  const validateTipo = (tipo: string | undefined) => {
+    if (!tipo || !tipo.trim()) return 'Este campo es obligatorio';
+    return null;
+  };
 
   // Función para manejar el envío del formulario
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const idValidation = validateIdNetsuite(String(formData.idNetsuite));
-    setIdError(idValidation);
-    if (idValidation) return;
-    if (!formData.nombre || !formData.tipo) {
+    
+    // Validar todos los campos obligatorios
+    const idNetsuiteError = validateIdNetsuite(formData.idNetsuite);
+    const nombreError = validateNombre(formData.nombre);
+    const tipoError = validateTipo(formData.tipo);
+    
+    // Establecer errores de validación
+    setFormErrors({
+      idNetsuite: idNetsuiteError,
+      nombre: nombreError,
+      tipo: tipoError
+    });
+    
+    // Si hay algún error, detener el envío del formulario
+    if (idNetsuiteError || nombreError || tipoError) {
       return;
     }
+    
+    // Asegurarse de que todos los campos sean string
     const centro: CentroCosto = {
       id: centroToEdit?.id || `cc-${Date.now()}`,
-      idNetsuite: String(formData.idNetsuite),
-      nombre: formData.nombre,
-      tipo: formData.tipo
+      idNetsuite: String(formData.idNetsuite || ''),
+      nombre: String(formData.nombre || ''),
+      tipo: String(formData.tipo || '')
     };
     onSave(centro);
     onClose();
@@ -134,7 +170,7 @@ export const AddCentroCostoDialog: React.FC<AddCentroCostoDialogProps> = ({
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div className="space-y-2">
               <Label htmlFor="idNetsuite">ID Netsuite *</Label>
               <Input
@@ -144,12 +180,12 @@ export const AddCentroCostoDialog: React.FC<AddCentroCostoDialogProps> = ({
                 value={formData.idNetsuite}
                 onChange={e => {
                   setFormData({ ...formData, idNetsuite: e.target.value.replace(/[^0-9]/g, '') });
-                  setIdError(null);
+                  setFormErrors(prev => ({ ...prev, idNetsuite: null }));
                 }}
                 placeholder="Ej: 1001"
-                required
+                className={formErrors.idNetsuite ? 'border-red-500' : ''}
               />
-              {idError && <div className="text-red-600 text-xs mt-1">{idError}</div>}
+              {formErrors.idNetsuite && <div className="text-red-600 text-xs mt-1">{formErrors.idNetsuite}</div>}
             </div>
 
             <div className="space-y-2">
@@ -157,10 +193,14 @@ export const AddCentroCostoDialog: React.FC<AddCentroCostoDialogProps> = ({
               <Input
                 id="nombre"
                 value={formData.nombre}
-                onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, nombre: e.target.value });
+                  setFormErrors(prev => ({ ...prev, nombre: null }));
+                }}
                 placeholder="Ej: Administración"
-                required
+                className={formErrors.nombre ? 'border-red-500' : ''}
               />
+              {formErrors.nombre && <div className="text-red-600 text-xs mt-1">{formErrors.nombre}</div>}
             </div>
 
             <div className="space-y-2">
@@ -168,9 +208,12 @@ export const AddCentroCostoDialog: React.FC<AddCentroCostoDialogProps> = ({
               <div className="flex gap-2">
                 <Select
                   value={formData.tipo}
-                  onValueChange={(value) => setFormData({ ...formData, tipo: value })}
+                  onValueChange={(value) => {
+                    setFormData({ ...formData, tipo: value });
+                    setFormErrors(prev => ({ ...prev, tipo: null }));
+                  }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={formErrors.tipo ? 'border-red-500' : ''}>
                     {formData.tipo || "Selecciona el tipo"}
                   </SelectTrigger>
                   <SelectContent>
@@ -190,6 +233,7 @@ export const AddCentroCostoDialog: React.FC<AddCentroCostoDialogProps> = ({
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
+              {formErrors.tipo && <div className="text-red-600 text-xs mt-1">{formErrors.tipo}</div>}
             </div>
 
             <div className="flex justify-end gap-2">
