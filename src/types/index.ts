@@ -1,6 +1,6 @@
 export type Nodo = {
   id: string;
-  tipo: 'grupo' | 'cuenta';
+  tipo: 'grupo' | 'cuenta' | 'medida';
   nombre: string;
   cuenta?: CuentaContable;
   cuentaId?: string;
@@ -48,7 +48,7 @@ export interface AppState {
   eliminarFormato: (id: string) => void;
   seleccionarFormato: (id: string) => void;
   actualizarFormato: (id: string, nombre: string) => void;
-  agregarNodo: (parentId: string | null, tipo: 'grupo' | 'cuenta', cuenta?: CuentaContable, centrosCosto?: string[]) => void;
+  agregarNodo: (parentId: string | null, tipo: 'grupo' | 'cuenta' | 'medida', cuenta?: CuentaContable, centrosCosto?: string[]) => void;
   actualizarNodo: (id: string, datos: Partial<Nodo>) => void;
   eliminarNodo: (id: string) => void;
   moverNodo: (id: string, nuevoParentId: string | null, indice: number) => void;

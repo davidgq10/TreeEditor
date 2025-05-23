@@ -167,7 +167,82 @@ export const TreeEditor: React.FC = () => {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6" style={{ maxWidth: "115%", margin: "0 auto" }}>
+      {/* 1. Nombre del informe */}
+      <div className="bg-white rounded-lg shadow p-4">
+        <h2 className="text-2xl font-bold">{formato.nombre}</h2>
+      </div>
+      
+      {/* 2. Opciones (botones de acción) */}
+      <div className="bg-white rounded-lg shadow p-4">
+        <div className="flex flex-wrap gap-3">
+          <Button
+            onClick={() => agregarNodo(null, 'grupo', undefined, centrosCostoDefault)}
+            variant="outline"
+            size="sm"
+            className="bg-gray-50 hover:bg-gray-100 border-gray-300"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Agregar Grupo
+          </Button>
+          <Button
+            onClick={() => setShowCuentaSelector(true)}
+            variant="outline"
+            size="sm"
+            className="bg-gray-50 hover:bg-gray-100 border-gray-300"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Agregar Cuenta
+          </Button>
+          <Button
+            onClick={() => agregarNodo(null, 'medida', undefined, centrosCostoDefault)}
+            variant="outline"
+            size="sm"
+            className="bg-gray-50 hover:bg-gray-100 border-gray-300"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Agregar Medida
+          </Button>
+          <Button
+            onClick={async () => {
+              setExportError(null);
+              setExportSuccess(null);
+              if (!formato) return;
+              const cuentasFaltantes = getCuentasSinCentros(formato.estructura);
+              if (cuentasFaltantes.length > 0) {
+                setMissingCuentas(cuentasFaltantes);
+                setShowMissingModal(true);
+                return;
+              }
+              try {
+                const buffer = await exportarAExcel({ formato, datos: {}, centrosCostoList: centrosCosto });
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${formato.nombre}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                setExportSuccess('¡Validación completada exitosamente!');
+                setShowExportModal(true);
+              } catch (error) {
+                setExportError('Ocurrió un error al exportar a Excel.');
+                setShowExportModal(true);
+              }
+            }}
+            variant="outline"
+            size="sm"
+            className="bg-green-50 hover:bg-green-100 border-green-300 text-green-700"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Descargar Excel
+          </Button>
+        </div>
+      </div>
+      
+      {/* 3. Centros de costo por defecto */}
       <Card className="p-4">
         <div className="space-y-2">
           <Label className="text-lg font-semibold">Centros de Costo por Defecto</Label>
@@ -286,62 +361,6 @@ export const TreeEditor: React.FC = () => {
       </Card>
 
       <div className="bg-white rounded-lg shadow p-4">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">{formato.nombre}</h2>
-          <div className="space-x-2">
-            <Button
-              onClick={() => agregarNodo(null, 'grupo', undefined, centrosCostoDefault)}
-              variant="outline"
-              size="sm"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Agregar Grupo
-            </Button>
-            <Button
-              onClick={() => setShowCuentaSelector(true)}
-              variant="outline"
-              size="sm"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Agregar Cuenta
-            </Button>
-            <Button
-              onClick={async () => {
-                setExportError(null);
-                setExportSuccess(null);
-                if (!formato) return;
-                const cuentasFaltantes = getCuentasSinCentros(formato.estructura);
-                if (cuentasFaltantes.length > 0) {
-                  setMissingCuentas(cuentasFaltantes);
-                  setShowMissingModal(true);
-                  return;
-                }
-                try {
-                  const buffer = await exportarAExcel({ formato, datos: {}, centrosCostoList: centrosCosto });
-                  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${formato.nombre}.xlsx`;
-                  document.body.appendChild(a);
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                  document.body.removeChild(a);
-                  setExportSuccess('¡Validación completada exitosamente!');
-                  setShowExportModal(true);
-                } catch (error) {
-                  setExportError('Ocurrió un error al exportar a Excel.');
-                  setShowExportModal(true);
-                }
-              }}
-              variant="outline"
-              size="sm"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Descargar
-            </Button>
-          </div>
-        </div>
 
         <DndContext
           sensors={sensors}

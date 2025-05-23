@@ -43,6 +43,7 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [] }: 
     { header: 'Nombre de Cuenta', key: 'nombreCuenta', width: 30 },
     { header: 'Tipo de Cuenta', key: 'tipoCuenta', width: 20 },
     { header: 'Descripción completa', key: 'descripcionCompleta', width: 40 },
+    { header: 'Tipo de Nodo', key: 'tipoNodo', width: 15 },
     { header: 'Es Linea de Informe', key: 'esLineaInforme', width: 15 }
   ];
 
@@ -59,7 +60,7 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [] }: 
   const agregarNodos = (nodos: Nodo[], nivel: number = 0, valoresAnteriores: string[] = []) => {
     nodos.forEach(nodo => {
       const nuevosValores = [...valoresAnteriores];
-      if (nodo.tipo === 'cuenta') {
+      if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
         nuevosValores[nivel] = nodo.nombre;
         if (nivel < profundidadMaxima - 1) {
           for (let i = nivel + 1; i < profundidadMaxima; i++) {
@@ -98,23 +99,35 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [] }: 
       // Invertir valor (solo para cuentas contables)
       rowData['invertirValor'] = nodo.tipo === 'cuenta' && nodo.invertirValor === true ? true : false;
 
-      // Orden global de línea en informe (solo para cuentas)
-      if (nodo.tipo === 'cuenta') {
+      // Orden global de línea en informe (solo para cuentas y medidas)
+      if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
         rowData['ordenGlobal'] = ordenGlobal++;
       } else {
         rowData['ordenGlobal'] = '';
       }
 
-      // Es línea de informe
-      rowData['esLineaInforme'] = nodo.tipo === 'cuenta';
+      // Tipo de nodo (grupo, cuenta, medida)
+      rowData['tipoNodo'] = nodo.tipo;
 
-      // Si es cuenta, llenar las columnas extra
+      // Es línea de informe (para cuentas y medidas)
+      rowData['esLineaInforme'] = nodo.tipo === 'cuenta' || nodo.tipo === 'medida';
+
+      // Si es cuenta, llenar las columnas extra con datos de cuenta
       if (nodo.tipo === 'cuenta' && nodo.cuenta) {
         rowData['numeroCuenta'] = nodo.cuenta.codigo || '';
         rowData['nombreCuenta'] = nodo.cuenta.nombre || '';
         rowData['tipoCuenta'] = nodo.cuenta.naturaleza || '';
         rowData['descripcionCompleta'] = `${nodo.cuenta.codigo || ''} ${nodo.cuenta.nombre || ''}`.trim();
-      } else {
+      }
+      // Si es medida, llenar las columnas extra con el nombre de la medida
+      else if (nodo.tipo === 'medida') {
+        rowData['numeroCuenta'] = nodo.nombre;
+        rowData['nombreCuenta'] = nodo.nombre;
+        rowData['tipoCuenta'] = nodo.nombre;
+        rowData['descripcionCompleta'] = nodo.nombre;
+      }
+      // Otros casos
+      else {
         rowData['numeroCuenta'] = '';
         rowData['nombreCuenta'] = '';
         rowData['tipoCuenta'] = '';
@@ -192,8 +205,12 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
     'Tipo de Cuenta',
     'Invertir valor',
     'Centro de costo seleccionados',
-    'Nombres de centro de costo seleccionados'
+    'Nombres de centro de costo seleccionados',
+    'Es Linea de Informe'
   ];
+  
+  // Columna opcional para compatibilidad con versiones anteriores
+  const tipoNodoColumnExists = 'Tipo de Nodo' in columnIndices;
 
   for (const col of requiredColumns) {
     if (!(col in columnIndices)) {
@@ -261,21 +278,41 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
     else if (nivel3) currentLevel = 2;
     else if (nivel2) currentLevel = 1;
     
-    // Si es una cuenta (tiene número de cuenta)
-    if (numeroCuenta && nombreCuenta && tipoCuenta) {
-      const cuenta: CuentaContable = {
+    // Obtener el tipo de nodo
+    const esLineaInforme = row.getCell(columnIndices['Es Linea de Informe']).value === true;
+    let tipoNodo: 'grupo' | 'cuenta' | 'medida' = 'grupo';
+    
+    if (tipoNodoColumnExists) {
+      const tipoNodoValue = row.getCell(columnIndices['Tipo de Nodo']).value?.toString()?.trim();
+      if (tipoNodoValue === 'cuenta' || tipoNodoValue === 'medida' || tipoNodoValue === 'grupo') {
+        tipoNodo = tipoNodoValue;
+      }
+    } else {
+      // Para compatibilidad con versiones anteriores sin columna de tipo
+      if (numeroCuenta && nombreCuenta && tipoCuenta) {
+        tipoNodo = 'cuenta';
+      } else if (esLineaInforme && !numeroCuenta) {
+        // Si es línea de informe pero no tiene número de cuenta, es una medida
+        tipoNodo = 'medida';
+      }
+    }
+    
+    // Si es una cuenta (tiene número de cuenta) o una medida
+    if ((tipoNodo === 'cuenta' && numeroCuenta && nombreCuenta) || tipoNodo === 'medida') {
+      // Solo crear objeto CuentaContable para nodos tipo cuenta
+      const cuenta = tipoNodo === 'cuenta' ? {
         id: uuidv4(),
-        codigo: numeroCuenta,
-        nombre: nombreCuenta,
-        naturaleza: tipoCuenta.toLowerCase() as 'gasto' | 'ingreso'
-      };
+        codigo: numeroCuenta || '',
+        nombre: nombreCuenta || '',
+        naturaleza: (tipoCuenta || 'gasto').toLowerCase() as 'gasto' | 'ingreso'
+      } : undefined;
       
       const node: Nodo = {
         id: uuidv4(),
-        tipo: 'cuenta',
-        nombre: nombreCuenta,
-        cuenta,
-        cuentaId: cuenta.id,
+        tipo: tipoNodo,
+        nombre: tipoNodo === 'cuenta' ? (nombreCuenta || '') : (nivel5 || nivel4 || nivel3 || nivel2 || nivel1 || 'Nueva Medida'),
+        cuenta: tipoNodo === 'cuenta' ? cuenta : undefined,
+        cuentaId: tipoNodo === 'cuenta' ? cuenta?.id : undefined,
         hijos: [],
         centrosCosto: centrosCostoIds,
         invertirValor
@@ -300,15 +337,16 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
         formato.estructura.push(node);
       }
     } 
-    // Si es un grupo (no tiene número de cuenta)
-    else if (nivel1) {
+    // Si es un grupo
+    else if (nivel1 && tipoNodo === 'grupo') {
       const nombreGrupo = nivel5 || nivel4 || nivel3 || nivel2 || nivel1;
       const node: Nodo = {
         id: uuidv4(),
         tipo: 'grupo',
         nombre: nombreGrupo,
         hijos: [],
-        centrosCosto: []
+        centrosCosto: [],
+        invertirValor: false
       };
       
       // Agregar a los nodos del nivel actual

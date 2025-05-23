@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronRight, ChevronDown, GripVertical, Trash2, Plus, X, Folder } from 'lucide-react';
+import { ChevronRight, ChevronDown, GripVertical, Trash2, Plus, X, Folder, Calculator } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useAppStore } from '../store';
@@ -93,8 +93,8 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
   };
 
   const toggleEdit = () => {
-    // Solo permitir edición de nombre para nodos tipo grupo
-    if (node.tipo === 'grupo') {
+    // Solo permitir edición de nombre para nodos tipo grupo y medida
+    if (node.tipo === 'grupo' || node.tipo === 'medida') {
       setIsEditing(!isEditing);
     }
   };
@@ -134,7 +134,7 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
     }
   };
 
-  const handleAddChild = (tipo: 'grupo' | 'cuenta') => {
+  const handleAddChild = (tipo: 'grupo' | 'cuenta' | 'medida') => {
     agregarNodo(node.id, tipo, undefined, centrosCostoDefault);
   };
 
@@ -156,7 +156,8 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
         className={`flex items-center gap-2 p-3 border-0 rounded-lg mb-2.5 transition-all duration-200
           ${levelBorderColors[level % levelBorderColors.length]}
           ${isDropTarget ? 'ring-2 ring-blue-500 scale-105' : ''}
-          ${node.tipo === 'grupo' ? 'bg-gray-100 hover:bg-gray-200' : node.tipo === 'cuenta' ? 'bg-white hover:bg-gray-50' : ''}
+          ${node.tipo === 'grupo' ? 'bg-gray-100 hover:bg-gray-200' : 
+            (node.tipo === 'cuenta' || node.tipo === 'medida') ? 'bg-white hover:bg-gray-50' : ''}
           shadow-sm hover:shadow-md
           group
         `}
@@ -167,11 +168,13 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
             <div className="mx-2 h-2 rounded-full bg-black w-[calc(100%-16px)] opacity-80"></div>
           </div>
         )}
-        {/* Ícono de grupo o cuenta */}
+        {/* Ícono de grupo, cuenta o medida */}
         {node.tipo === 'grupo' ? (
           <Folder className="w-5 h-5 text-blue-600 mr-1 group-hover:text-blue-700 transition-colors" />
-        ) : (
+        ) : node.tipo === 'cuenta' ? (
           <span className="flex items-center justify-center w-7 h-7 rounded-full bg-yellow-300 text-black text-lg font-bold mr-1 border border-yellow-400 shadow-sm" style={{fontFamily: 'monospace'}}>¢</span>
+        ) : (
+          <Calculator className="w-5 h-5 text-purple-600 mr-1 group-hover:text-purple-700 transition-colors" />
         )}
         {/* Drag and drop handle en todos los niveles */}
         <div {...attributes} {...listeners}>
@@ -201,12 +204,12 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
             className="h-8 focus:ring-2 focus:ring-blue-500"
           />
         ) : (
-          <div className="flex-1 cursor-pointer" onClick={toggleEdit} style={{ cursor: node.tipo === 'grupo' ? 'pointer' : 'default' }}>
+          <div className="flex-1 cursor-pointer" onClick={toggleEdit} style={{ cursor: node.tipo === 'grupo' || node.tipo === 'medida' ? 'pointer' : 'default' }}>
             <div className="font-medium group-hover:text-gray-800 transition-colors">{node.nombre}</div>
-            {node.tipo === 'cuenta' && (!node.centrosCosto || node.centrosCosto.length === 0) && (
+            {(node.tipo === 'cuenta' || node.tipo === 'medida') && (!node.centrosCosto || node.centrosCosto.length === 0) && (
               <div className="mt-1 text-xs text-red-700 font-semibold">Seleccione los centros de costo</div>
             )}
-            {node.tipo === 'cuenta' && (
+            {(node.tipo === 'cuenta' || node.tipo === 'medida') && (
               <div className="mt-1 flex items-center gap-2">
                 <Button
                   variant="ghost"
@@ -293,9 +296,18 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
                 <Plus className="w-4 h-4 mr-1" />
                 Cuenta
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleAddChild('medida')}
+                className="hover:bg-gray-100"
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Medida
+              </Button>
             </>
           )}
-          {node.tipo === 'cuenta' && (
+          {(node.tipo === 'cuenta' || node.tipo === 'medida') && (
             <>
               <Button
                 variant="ghost"

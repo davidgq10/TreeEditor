@@ -1,6 +1,6 @@
 {
   "appId": "com.serviciospasteleria.financialreportbuilder",
-  "productName": "Financial Report Builder",
+  "productName": "Editor de reportes PBI",
   "directories": {
     "output": "release"
   },
@@ -19,6 +19,6 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Financial Report Builder"
+    "shortcutName": "Editor de reportes PBI"
   }
 } 
