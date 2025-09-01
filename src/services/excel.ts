@@ -239,7 +239,12 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
     const nivel3 = columnIndices['Nivel 3'] ? row.getCell(columnIndices['Nivel 3']).value?.toString()?.trim() : null;
     const nivel4 = columnIndices['Nivel 4'] ? row.getCell(columnIndices['Nivel 4']).value?.toString()?.trim() : null;
     const nivel5 = columnIndices['Nivel 5'] ? row.getCell(columnIndices['Nivel 5']).value?.toString()?.trim() : null;
-    
+    const nivel6 = columnIndices['Nivel 6'] ? row.getCell(columnIndices['Nivel 6']).value?.toString()?.trim() : null;
+    const nivel7 = columnIndices['Nivel 7'] ? row.getCell(columnIndices['Nivel 7']).value?.toString()?.trim() : null;
+    const nivel8 = columnIndices['Nivel 8'] ? row.getCell(columnIndices['Nivel 8']).value?.toString()?.trim() : null;
+    const nivel9 = columnIndices['Nivel 9'] ? row.getCell(columnIndices['Nivel 9']).value?.toString()?.trim() : null;
+    const nivel10 = columnIndices['Nivel 10'] ? row.getCell(columnIndices['Nivel 10']).value?.toString()?.trim() : null;
+
     const numeroCuenta = row.getCell(columnIndices['Numero de Cuenta']).value?.toString()?.trim();
     const nombreCuenta = row.getCell(columnIndices['Nombre de Cuenta']).value?.toString()?.trim();
     const tipoCuenta = row.getCell(columnIndices['Tipo de Cuenta']).value?.toString()?.trim();
@@ -273,7 +278,12 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
     
     // Determinar el nivel actual basado en las columnas con valores
     let currentLevel = 0;
-    if (nivel5) currentLevel = 4;
+    if (nivel10) currentLevel = 9;
+    else if (nivel9) currentLevel = 8;
+    else if (nivel8) currentLevel = 7;
+    else if (nivel7) currentLevel = 6;
+    else if (nivel6) currentLevel = 5;
+    else if (nivel5) currentLevel = 4;
     else if (nivel4) currentLevel = 3;
     else if (nivel3) currentLevel = 2;
     else if (nivel2) currentLevel = 1;
