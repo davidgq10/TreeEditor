@@ -75,5 +75,6 @@ export interface Departamento {
   id: number;
   nombre: string;
   nombre_completo: string;
+  tipo: string;
   idNetsuite?: string;
 } 

@@ -25,6 +25,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger } from './ui/select';
+import { Plus } from 'lucide-react';
 import { Departamento } from '../types';
 import { useAppStore } from '../store';
 
@@ -34,6 +36,57 @@ interface AddDepartamentoDialogProps {
   deptoToEdit: Departamento | null;
   onSave: (depto: Departamento) => void;
 }
+
+interface AddTipoDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onAdd: (nuevoTipo: string) => void;
+}
+
+const AddTipoDialog: React.FC<AddTipoDialogProps> = ({ isOpen, onClose, onAdd }) => {
+  const [nuevoTipo, setNuevoTipo] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (nuevoTipo.trim()) {
+      onAdd(nuevoTipo.trim());
+      setNuevoTipo('');
+      onClose();
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Agregar Nuevo Tipo</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="nuevoTipo" className="block text-sm font-medium mb-1">
+              Nombre del Tipo
+            </label>
+            <Input
+              id="nuevoTipo"
+              placeholder="Ingrese el nombre del nuevo tipo"
+              value={nuevoTipo}
+              onChange={(e) => setNuevoTipo(e.target.value)}
+              required
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit">
+              Agregar
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 export const AddDepartamentoDialog: React.FC<AddDepartamentoDialogProps> = ({
   isOpen,
@@ -46,17 +99,33 @@ export const AddDepartamentoDialog: React.FC<AddDepartamentoDialogProps> = ({
   const [formData, setFormData] = React.useState({
     id: '',
     nombre: '',
-    nombre_completo: ''
+    nombre_completo: '',
+    tipo: ''
   });
   const [formErrors, setFormErrors] = useState<{
     id: string | null;
     nombre: string | null;
     nombre_completo: string | null;
+    tipo: string | null;
   }>({ 
     id: null,
     nombre: null,
-    nombre_completo: null
+    nombre_completo: null,
+    tipo: null
    });
+  const [tiposDepto, setTiposDepto] = useState<Set<string>>(new Set());
+  const [isAddTipoDialogOpen, setIsAddTipoDialogOpen] = useState(false);
+
+  // Actualizar tipos de departamentos disponibles
+  useEffect(() => {
+    const tipos = new Set<string>();
+    departamentos.forEach(depto => {
+      if (depto.tipo) {
+        tipos.add(depto.tipo);
+      }
+    });
+    setTiposDepto(tipos);
+  }, [departamentos]);
 
   // Efecto para inicializar el formulario cuando se edita un depto existente
   useEffect(() => {
@@ -64,21 +133,25 @@ export const AddDepartamentoDialog: React.FC<AddDepartamentoDialogProps> = ({
       setFormData({
         id: String(deptoToEdit.id),
         nombre: deptoToEdit.nombre,
-        nombre_completo: deptoToEdit.nombre_completo
+        nombre_completo: deptoToEdit.nombre_completo,
+        tipo: deptoToEdit.tipo
       });
     } else {
       setFormData({
         id: '',
         nombre: '',
-        nombre_completo: ''
+        nombre_completo: '',
+        tipo: ''
       });
     }
     // Limpiar todos los errores
     setFormErrors({
       id: null,
       nombre: null,
-      nombre_completo: null
+      nombre_completo: null,
+      tipo: null
     });
+    setIsAddTipoDialogOpen(false);
   }, [deptoToEdit, isOpen]);
 
   // Validación de campos
@@ -103,6 +176,11 @@ export const AddDepartamentoDialog: React.FC<AddDepartamentoDialogProps> = ({
     return null;
   };
 
+  const validateTipo = (tipo: string | undefined) => {
+    if (!tipo || !tipo.trim()) return 'El campo Tipo es obligatorio';
+    return null;
+  };
+
   // Función para manejar el envío del formulario
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,16 +189,18 @@ export const AddDepartamentoDialog: React.FC<AddDepartamentoDialogProps> = ({
     const idError = validateId(formData.id);
     const nombreError = validateNombre(formData.nombre);
     const nombreCompletoError = validateNombreCompleto(formData.nombre_completo);
+    const tipoError = validateTipo(formData.tipo);
     
     // Establecer errores de validación
     setFormErrors({
       id: idError,
       nombre: nombreError,
-      nombre_completo: nombreCompletoError
+      nombre_completo: nombreCompletoError,
+      tipo: tipoError
     });
     
     // Si hay algún error, detener el envío del formulario
-    if (idError || nombreError || nombreCompletoError) {
+    if (idError || nombreError || nombreCompletoError || tipoError) {
       return;
     }
     
@@ -128,17 +208,17 @@ export const AddDepartamentoDialog: React.FC<AddDepartamentoDialogProps> = ({
     const depto: Departamento = {
       id: parseInt(formData.id, 10),
       nombre: String(formData.nombre || ''),
-      nombre_completo: String(formData.nombre_completo || '')
+      nombre_completo: String(formData.nombre_completo || ''),
+      tipo: String(formData.tipo || '')
     };
     
-    if (!deptoToEdit) {
-      // Si es un nuevo departamento, se usa el ID del formulario
-    } else {
-      // Si se está editando, el ID original se usa para la actualización
-      // y el objeto 'depto' contiene el ID potencialmente modificado.
-    }
     onSave(depto);
     onClose();
+  };
+
+  const handleAddTipo = (nuevoTipo: string) => {
+    setTiposDepto(new Set([...tiposDepto, nuevoTipo]));
+    setFormData(prev => ({ ...prev, tipo: nuevoTipo }));
   };
 
   return (
@@ -201,6 +281,41 @@ export const AddDepartamentoDialog: React.FC<AddDepartamentoDialogProps> = ({
               {formErrors.nombre_completo && <div className="text-red-600 text-xs mt-1">{formErrors.nombre_completo}</div>}
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="tipo">Tipo *</Label>
+              <div className="flex gap-2">
+                <Select
+                  value={formData.tipo}
+                  onValueChange={(value) => {
+                    setFormData({ ...formData, tipo: value });
+                    setFormErrors(prev => ({ ...prev, tipo: null }));
+                  }}
+                >
+                  <SelectTrigger className={`flex-1 ${formErrors.tipo ? 'border-red-500' : ''}`}>
+                    <span className="text-left">
+                      {formData.tipo || 'Seleccionar tipo'}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from(tiposDepto).sort().map((tipo) => (
+                      <SelectItem key={tipo} value={tipo}>
+                        {tipo}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setIsAddTipoDialogOpen(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              {formErrors.tipo && <div className="text-red-600 text-xs mt-1">{formErrors.tipo}</div>}
+            </div>
+
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancelar
@@ -212,6 +327,12 @@ export const AddDepartamentoDialog: React.FC<AddDepartamentoDialogProps> = ({
           </form>
         </DialogContent>
       </Dialog>
+
+      <AddTipoDialog
+        isOpen={isAddTipoDialogOpen}
+        onClose={() => setIsAddTipoDialogOpen(false)}
+        onAdd={handleAddTipo}
+      />
     </>
   );
 };

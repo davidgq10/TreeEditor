@@ -73,19 +73,23 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
   const { isOpen, onClose, onSave, cuentaToEdit, centrosCosto, centrosCostoDefault } = props;
   const { agregarCuenta, actualizarCuenta, cuentas } = useAppStore();
   const [formData, setFormData] = useState<{
+    id: string;
     codigo: string;
     nombre: string;
     naturaleza: 'gasto' | 'ingreso'
   }>({
+    id: '',
     codigo: '',
     nombre: '',
     naturaleza: 'gasto'
   });
   const [formErrors, setFormErrors] = useState<{
+    id: string | null;
     codigo: string | null;
     nombre: string | null;
     naturaleza: string | null;
   }>({
+    id: null,
     codigo: null,
     nombre: null,
     naturaleza: null
@@ -117,12 +121,14 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
   useEffect(() => {
     if (cuentaToEdit) {
       setFormData({
+        id: cuentaToEdit.id,
         codigo: cuentaToEdit.codigo,
         nombre: cuentaToEdit.nombre,
         naturaleza: cuentaToEdit.naturaleza
       });
       // Limpiar errores al cargar datos
       setFormErrors({
+        id: null,
         codigo: null,
         nombre: null,
         naturaleza: null
@@ -130,12 +136,14 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
       if (centrosCosto && centrosCostoDefault && setCentrosSeleccionados) setCentrosSeleccionados(centrosCostoDefault);
     } else {
       setFormData({
+        id: '',
         codigo: '',
         nombre: '',
         naturaleza: 'gasto'
       });
       // Limpiar errores al resetear el formulario
       setFormErrors({
+        id: null,
         codigo: null,
         nombre: null,
         naturaleza: null
@@ -151,6 +159,7 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
     
     // Inicializar los errores de validación
     const newErrors = {
+      id: null,
       codigo: !formData.codigo ? 'El campo Código es obligatorio' : null,
       nombre: !formData.nombre ? 'El campo Nombre es obligatorio' : null,
       naturaleza: !formData.naturaleza ? 'El campo Tipo es obligatorio' : null
@@ -179,7 +188,7 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
       }
 
       const cuenta: CuentaContable = {
-        id: cuentaToEdit?.id || uuidv4(),
+        id: formData.id || cuentaToEdit?.id || String(Date.now()),
         codigo: formData.codigo,
         nombre: formData.nombre,
         naturaleza: formData.naturaleza
@@ -209,11 +218,13 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
       <Dialog open={isOpen} onOpenChange={(open) => {
         if (!open) {
           setFormData({
+            id: '',
             codigo: '',
             nombre: '',
             naturaleza: 'gasto'
           });
           setFormErrors({
+            id: null,
             codigo: null,
             nombre: null,
             naturaleza: null
@@ -227,6 +238,29 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
             <DialogTitle>{cuentaToEdit ? 'Editar Cuenta' : 'Nueva Cuenta'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+            <div>
+              <label htmlFor="id" className="block text-sm font-medium mb-1">
+                ID *
+              </label>
+              <Input
+                id="id"
+                placeholder="ID único (se genera automáticamente si se deja vacío)"
+                value={formData.id}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, id: e.target.value }));
+                  setFormErrors(prev => ({ ...prev, id: null }));
+                  setError(null);
+                }}
+                className={formErrors.id ? 'border-red-500' : ''}
+                disabled={!!cuentaToEdit}
+              />
+              {formErrors.id && <p className="mt-1 text-sm text-red-500">{formErrors.id}</p>}
+              {!cuentaToEdit && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Deje vacío para generar automáticamente un ID único
+                </p>
+              )}
+            </div>
             <div>
               <label htmlFor="codigo" className="block text-sm font-medium mb-1">
                 Código *
@@ -332,6 +366,7 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
                 variant="outline"
                 onClick={() => {
                   setFormData({
+                    id: '',
                     codigo: '',
                     nombre: '',
                     naturaleza: 'gasto'

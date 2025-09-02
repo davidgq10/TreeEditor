@@ -17,9 +17,11 @@ import { Button } from './ui/button';
 import { TreeNode } from './TreeNode';
 import { useAppStore } from '../store';
 import { Plus, Download, Check, X, ChevronDown, ChevronRight, Upload, Minimize2, Maximize2 } from 'lucide-react';
-import { exportarAExcel, importFromExcel } from '../services/excel';
+import { exportarAExcel, exportarAExcelDesnormalizado, importFromExcel } from '../services/excel';
 import { Label } from './ui/label';
 import { Card } from './ui/card';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger } from './ui/select';
 import {
   Dialog,
   DialogContent,
@@ -48,7 +50,11 @@ export const TreeEditor: React.FC = () => {
   const [centrosCostoDefault, setCentrosCostoDefault] = useState<string[]>([]);
   const [departamentosDefault, setDepartamentosDefault] = useState<string[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [filtroTipoCentros, setFiltroTipoCentros] = useState<string>('');
+  const [filtroTipoDepartamentos, setFiltroTipoDepartamentos] = useState<string>('');
   const [departamentosDialogOpen, setDepartamentosDialogOpen] = useState(false);
+  const [searchTermCentros, setSearchTermCentros] = useState<string>('');
+  const [searchTermDepartamentos, setSearchTermDepartamentos] = useState<string>('');
   const [isAddCuentaDialogOpen, setIsAddCuentaDialogOpen] = useState(false);
   const [showCuentaSelector, setShowCuentaSelector] = useState(false);
   const [centrosCostoExpandido, setCentrosCostoExpandido] = useState(false);
@@ -284,6 +290,56 @@ export const TreeEditor: React.FC = () => {
             <Download className="w-4 h-4 mr-2" />
             Descargar Excel
           </Button>
+          <Button
+            onClick={async () => {
+              setExportError(null);
+              setExportSuccess(null);
+              if (!formato) return;
+
+              const cuentasSinCentros = getCuentasSinAsignaciones(formato.estructura, 'centros');
+              if (cuentasSinCentros.length > 0) {
+                setMissingCuentas(cuentasSinCentros);
+                setShowMissingModal(true);
+                return;
+              }
+
+              const cuentasSinDepartamentos = getCuentasSinAsignaciones(formato.estructura, 'departamentos');
+              if (cuentasSinDepartamentos.length > 0) {
+                setMissingCuentas(cuentasSinDepartamentos);
+                setShowMissingModal(true);
+                return;
+              }
+
+              try {
+                const buffer = await exportarAExcelDesnormalizado({ 
+                  formato, 
+                  datos: {}, 
+                  centrosCostoList: centrosCosto, 
+                  departamentosList: departamentos 
+                });
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${formato.nombre}_desnormalizado.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                setExportSuccess('¡Exportación desnormalizada completada exitosamente!');
+                setShowExportModal(true);
+              } catch (error) {
+                setExportError('Ocurrió un error al exportar a Excel desnormalizado.');
+                setShowExportModal(true);
+              }
+            }}
+            variant="outline"
+            size="sm"
+            className="bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-700"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Excel Desnormalizado
+          </Button>
         </div>
       </div>
       
@@ -305,26 +361,90 @@ export const TreeEditor: React.FC = () => {
                 <DialogHeader>
                   <DialogTitle>Seleccionar Centros de Costo</DialogTitle>
                 </DialogHeader>
-                <div className="flex gap-2 mb-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setCentrosCostoDefault(centrosCosto.filter(c => c.idNetsuite).map(c => c.idNetsuite as string))}
-                  >
-                    Seleccionar todo
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setCentrosCostoDefault([])}
-                  >
-                    Quitar todo
-                  </Button>
+                <div className="space-y-3">
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const centrosFiltrados = centrosCosto.filter(c => {
+                          if (!c.idNetsuite) return false;
+                          const matchesType = !filtroTipoCentros || c.tipo === filtroTipoCentros;
+                          const matchesSearch = !searchTermCentros || 
+                            c.nombre.toLowerCase().includes(searchTermCentros.toLowerCase()) ||
+                            c.tipo.toLowerCase().includes(searchTermCentros.toLowerCase());
+                          return matchesType && matchesSearch;
+                        });
+                        setCentrosCostoDefault(centrosFiltrados.map(c => c.idNetsuite as string));
+                      }}
+                    >
+                      Seleccionar todo
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setCentrosCostoDefault([])}
+                    >
+                      Quitar todo
+                    </Button>
+                    {filtroTipoCentros && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const centrosPorTipo = centrosCosto.filter(c => 
+                            c.idNetsuite && c.tipo === filtroTipoCentros
+                          );
+                          setCentrosCostoDefault(centrosPorTipo.map(c => c.idNetsuite as string));
+                        }}
+                      >
+                        Seleccionar tipo: {filtroTipoCentros}
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="search-centros">Buscar:</Label>
+                    <Input
+                      id="search-centros"
+                      placeholder="Buscar por nombre o tipo..."
+                      value={searchTermCentros}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTermCentros(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="filtro-tipo-centros">Filtrar por tipo:</Label>
+                    <Select
+                      value={filtroTipoCentros}
+                      onValueChange={setFiltroTipoCentros}
+                    >
+                      <SelectTrigger>
+                        {filtroTipoCentros || 'Todos los tipos'}
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Todos los tipos</SelectItem>
+                        {Array.from(new Set(centrosCosto.map(c => c.tipo))).sort().map((tipo, index) => (
+                          <SelectItem key={`centro-tipo-${index}-${tipo}`} value={tipo}>
+                            {tipo}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="grid gap-4 py-4 max-h-[60vh] overflow-auto">
-                  {centrosCosto.map((centro) => (
+                  {centrosCosto
+                    .filter(centro => {
+                      const matchesType = !filtroTipoCentros || centro.tipo === filtroTipoCentros;
+                      const matchesSearch = !searchTermCentros || 
+                        centro.nombre.toLowerCase().includes(searchTermCentros.toLowerCase()) ||
+                        centro.tipo.toLowerCase().includes(searchTermCentros.toLowerCase());
+                      return matchesType && matchesSearch;
+                    })
+                    .map((centro) => (
                     <div key={centro.id} className="flex items-center space-x-2">
                       <Checkbox
                         id={centro.id}
@@ -422,26 +542,91 @@ export const TreeEditor: React.FC = () => {
                 <DialogHeader>
                   <DialogTitle>Seleccionar Departamentos</DialogTitle>
                 </DialogHeader>
-                <div className="flex gap-2 mb-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDepartamentosDefault(departamentos.map(d => String(d.id)))}
-                  >
-                    Seleccionar todo
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDepartamentosDefault([])}
-                  >
-                    Quitar todo
-                  </Button>
+                <div className="space-y-3">
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const deptosFiltrados = departamentos.filter(d => {
+                          const matchesType = !filtroTipoDepartamentos || d.tipo === filtroTipoDepartamentos;
+                          const matchesSearch = !searchTermDepartamentos || 
+                            d.nombre.toLowerCase().includes(searchTermDepartamentos.toLowerCase()) ||
+                            d.nombre_completo.toLowerCase().includes(searchTermDepartamentos.toLowerCase()) ||
+                            d.tipo.toLowerCase().includes(searchTermDepartamentos.toLowerCase());
+                          return matchesType && matchesSearch;
+                        });
+                        setDepartamentosDefault(deptosFiltrados.map(d => String(d.id)));
+                      }}
+                    >
+                      Seleccionar todo
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDepartamentosDefault([])}
+                    >
+                      Quitar todo
+                    </Button>
+                    {filtroTipoDepartamentos && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const deptosPorTipo = departamentos.filter(d => 
+                            d.tipo === filtroTipoDepartamentos
+                          );
+                          setDepartamentosDefault(deptosPorTipo.map(d => String(d.id)));
+                        }}
+                      >
+                        Seleccionar tipo: {filtroTipoDepartamentos}
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="search-departamentos">Buscar:</Label>
+                    <Input
+                      id="search-departamentos"
+                      placeholder="Buscar por nombre o tipo..."
+                      value={searchTermDepartamentos}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTermDepartamentos(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="filtro-tipo-departamentos">Filtrar por tipo:</Label>
+                    <Select
+                      value={filtroTipoDepartamentos}
+                      onValueChange={setFiltroTipoDepartamentos}
+                    >
+                      <SelectTrigger>
+                        {filtroTipoDepartamentos || 'Todos los tipos'}
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Todos los tipos</SelectItem>
+                        {Array.from(new Set(departamentos.map(d => d.tipo))).sort().map((tipo, index) => (
+                          <SelectItem key={`depto-tipo-${index}-${tipo}`} value={tipo}>
+                            {tipo}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="grid gap-4 py-4 max-h-[60vh] overflow-auto">
-                  {departamentos.map((depto) => (
+                  {departamentos
+                    .filter(depto => {
+                      const matchesType = !filtroTipoDepartamentos || depto.tipo === filtroTipoDepartamentos;
+                      const matchesSearch = !searchTermDepartamentos || 
+                        depto.nombre.toLowerCase().includes(searchTermDepartamentos.toLowerCase()) ||
+                        depto.nombre_completo.toLowerCase().includes(searchTermDepartamentos.toLowerCase()) ||
+                        depto.tipo.toLowerCase().includes(searchTermDepartamentos.toLowerCase());
+                      return matchesType && matchesSearch;
+                    })
+                    .map((depto) => (
                     <div key={depto.id} className="flex items-center space-x-2">
                       <Checkbox
                         id={`depto-${depto.id}`}
@@ -459,7 +644,7 @@ export const TreeEditor: React.FC = () => {
                         htmlFor={`depto-${depto.id}`}
                         className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                       >
-                        {depto.nombre}
+                        {`${depto.nombre} (${depto.tipo})`}
                       </label>
                     </div>
                   ))}

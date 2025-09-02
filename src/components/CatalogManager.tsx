@@ -5,6 +5,8 @@ import { Pencil, Trash2, ChevronUp, ChevronDown, Plus, Upload } from 'lucide-rea
 import { useAppStore } from '../store';
 import { CuentaContable, Nodo } from '../types';
 import { AddCuentaDialog } from './AddCuentaDialog';
+import { EditCuentaDialog } from './EditCuentaDialog';
+import UsageDetailsModal from './UsageDetailsModal';
 import {
   Dialog,
   DialogContent,
@@ -25,8 +27,10 @@ export const CatalogManager: React.FC = () => {
   const { cuentas, agregarCuenta, eliminarCuenta, actualizarCuenta, centrosCosto, centrosCostoDefault, formatos } = useAppStore();
   const [editingCuenta, setEditingCuenta] = useState<CuentaContable | null>(null);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [isAddCuentaDialogOpen, setIsAddCuentaDialogOpen] = useState(false);
-  const [previewData, setPreviewData] = useState<CuentaContable[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [cuentaToDelete, setCuentaToDelete] = useState<CuentaContable | null>(null);
+  const [usageDetailsModalOpen, setUsageDetailsModalOpen] = useState(false);
+  const [usageDetails, setUsageDetails] = useState<any>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,6 +45,8 @@ export const CatalogManager: React.FC = () => {
   const [filterNaturaleza, setFilterNaturaleza] = useState<'gasto' | 'ingreso' | 'todos'>('todos');
   const [openCombobox, setOpenCombobox] = useState(false);
   const [tiposCuenta, setTiposCuenta] = useState<Set<'gasto' | 'ingreso'>>(new Set());
+  const [isAddCuentaDialogOpen, setIsAddCuentaDialogOpen] = useState(false);
+  const [previewData, setPreviewData] = useState<any[]>([]);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
     isOpen: boolean;
     title: string;
@@ -152,30 +158,56 @@ export const CatalogManager: React.FC = () => {
       }
 
       const headers = data[0].map(h => h?.toString().toLowerCase().trim() || '');
+      const idIndex = headers.findIndex(h => h === 'id');
       const codigoIndex = headers.findIndex(h => h === 'codigo' || h === 'código');
       const nombreIndex = headers.findIndex(h => h === 'nombre');
       const tipoIndex = headers.findIndex(h => h === 'tipo' || h === 'naturaleza');
 
       if (codigoIndex === -1 || nombreIndex === -1 || tipoIndex === -1) {
-        setImportError('El archivo debe contener exactamente las columnas: Código, Nombre y Tipo');
+        setImportError('El archivo debe contener exactamente las columnas: Código, Nombre y Tipo (ID es opcional)');
         return;
       }
 
       const preview: CuentaContable[] = [];
       const codigosExistentes = new Set(cuentas.map(c => c.codigo));
+      const idsExistentes = new Set(cuentas.map(c => c.id));
       const codigosNuevos = new Set<string>();
+      const idsNuevos = new Set<string>();
 
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
         if (!row || row.length === 0) continue;
 
+        const id = idIndex >= 0 ? row[idIndex]?.toString().trim() : '';
         const codigo = row[codigoIndex]?.toString().trim();
         const nombre = row[nombreIndex]?.toString().trim();
-        const tipo = row[tipoIndex]?.toString().toLowerCase().trim() || 'gasto';
+        const tipo = row[tipoIndex]?.toString().trim();
 
-        if (!codigo || !nombre) {
-          setImportError(`Error en la fila ${i + 1}: Los campos Código y Nombre son obligatorios`);
+        if (!codigo || !nombre || !tipo) {
+          setImportError(`Error en la fila ${i + 1}: Faltan datos requeridos`);
           return;
+        }
+
+        if (!['gasto', 'ingreso'].includes(tipo.toLowerCase())) {
+          setImportError(`Error en la fila ${i + 1}: El tipo debe ser "gasto" o "ingreso"`);
+          return;
+        }
+
+        // Validar ID si se proporciona
+        let finalId = id;
+        if (id) {
+          if (idsExistentes.has(id)) {
+            setImportError(`Error en la fila ${i + 1}: El ID ${id} ya existe en el catálogo de cuentas`);
+            return;
+          }
+          if (idsNuevos.has(id)) {
+            setImportError(`Error en la fila ${i + 1}: El ID ${id} está duplicado en el archivo`);
+            return;
+          }
+          idsNuevos.add(id);
+        } else {
+          // Generar ID único si no se proporciona
+          finalId = String(Date.now() + i);
         }
 
         if (codigosExistentes.has(codigo)) {
@@ -189,7 +221,7 @@ export const CatalogManager: React.FC = () => {
         }
 
         preview.push({
-          id: codigo,
+          id: finalId,
           codigo,
           nombre,
           naturaleza: tipo as 'gasto' | 'ingreso'
@@ -220,60 +252,6 @@ export const CatalogManager: React.FC = () => {
   };
 
   const handleDeleteCuenta = (cuenta: CuentaContable) => {
-    // Verificar si la cuenta está siendo utilizada en algún informe
-    const informesUsandoCuenta = formatos.filter(formato => {
-      const buscarCuentaEnNodos = (nodos: Nodo[]): boolean => {
-        for (const nodo of nodos) {
-          // Verificar si la cuenta está siendo utilizada - usando múltiples campos posibles para la comparación
-          if (nodo.tipo === 'cuenta' && (
-            nodo.cuentaId === cuenta.id || 
-            nodo.cuenta?.id === cuenta.id ||
-            nodo.cuentaId === cuenta.codigo || 
-            nodo.cuenta?.codigo === cuenta.codigo
-          )) {
-            return true;
-          }
-          if (nodo.hijos && nodo.hijos.length > 0) {
-            if (buscarCuentaEnNodos(nodo.hijos)) {
-              return true;
-            }
-          }
-        }
-        return false;
-      };
-      return buscarCuentaEnNodos(formato.estructura);
-    });
-
-    if (informesUsandoCuenta.length > 0) {
-      setDeleteConfirmation({
-        isOpen: true,
-        title: 'No se puede eliminar la cuenta',
-        message: (
-          <div className="space-y-4">
-            <div className="text-red-600 font-medium">
-              La cuenta "{cuenta.nombre}" ({cuenta.codigo}) no se puede eliminar porque está siendo utilizada en los siguientes informes:
-            </div>
-            <div className="bg-red-50 p-4 rounded-md">
-              <ul className="list-disc pl-5 space-y-1">
-                {informesUsandoCuenta.map(f => (
-                  <li key={f.id} className="text-gray-700">{f.nombre}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="text-sm text-gray-600">
-              Por favor, elimine la cuenta de estos informes antes de intentar eliminarla del catálogo.
-            </div>
-          </div>
-        ),
-        onConfirm: () => {
-          setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
-        },
-        showConfirmButton: false
-      });
-      return;
-    }
-
-    // Mostrar diálogo de confirmación si la cuenta no está siendo utilizada
     setDeleteConfirmation({
       isOpen: true,
       title: 'Eliminar Cuenta Contable',
@@ -283,23 +261,67 @@ export const CatalogManager: React.FC = () => {
           eliminarCuenta(cuenta.id);
           setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
         } catch (error) {
-          // Si hay un error al eliminar (por ejemplo, la cuenta está en uso)
+          const err = error as any;
+          if (err.usageDetails) {
+            setUsageDetails(err.usageDetails);
+            setUsageDetailsModalOpen(true);
+            setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
+          } else {
+            setDeleteConfirmation({
+              isOpen: true,
+              title: 'Error al eliminar cuenta',
+              message: err.message,
+              onConfirm: () => setDeleteConfirmation(prev => ({ ...prev, isOpen: false })),
+              showConfirmButton: false
+            });
+          }
+        }
+      },
+      showConfirmButton: true
+    });
+  };
+
+  const handleDeleteAll = () => {
+    setDeleteConfirmation({
+      isOpen: true,
+      title: 'Eliminar Todas las Cuentas',
+      message: `¿Estás seguro de eliminar todas las cuentas del catálogo? Esta acción no se puede deshacer.`,
+      onConfirm: () => {
+        try {
+          // Check each account for usage before deletion
+          const usedAccounts: CuentaContable[] = [];
+          const usageInfo: string[] = [];
+          
+          for (const cuenta of cuentas) {
+            try {
+              eliminarCuenta(cuenta.id);
+            } catch (error) {
+              const err = error as any;
+              if (err.usageDetails) {
+                usedAccounts.push(cuenta);
+                usageInfo.push(`${cuenta.nombre} (${cuenta.codigo}): ${err.usageDetails.usedInFormats.join(', ')}`);
+              }
+            }
+          }
+          
+          if (usedAccounts.length > 0) {
+            setUsageDetails({
+              type: 'multiple',
+              itemName: `${usedAccounts.length} cuenta(s)`,
+              usedInFormats: usageInfo,
+              count: usedAccounts.length
+            });
+            setUsageDetailsModalOpen(true);
+          }
+          
+          setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          const err = error as any;
           setDeleteConfirmation({
             isOpen: true,
-            title: 'Error al eliminar la cuenta',
-            message: (
-              <div className="space-y-4">
-                <div className="text-red-600 font-medium">
-                  No se pudo eliminar la cuenta "{cuenta.nombre}" ({cuenta.codigo})
-                </div>
-                <div className="text-sm text-gray-600">
-                  {error instanceof Error ? error.message : 'La cuenta está siendo utilizada en informes.'}
-                </div>
-              </div>
-            ),
-            onConfirm: () => {
-              setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
-            },
+            title: 'Error al eliminar cuentas',
+            message: err.message,
+            onConfirm: () => setDeleteConfirmation(prev => ({ ...prev, isOpen: false })),
             showConfirmButton: false
           });
         }
@@ -330,21 +352,25 @@ export const CatalogManager: React.FC = () => {
       }
 
       const cuenta: CuentaContable = {
-        id: editingCuenta?.id || uuidv4(),
+        id: String(Date.now()),
         codigo: formData.codigo,
         nombre: formData.nombre,
         naturaleza: formData.naturaleza
       };
 
       if (editingCuenta) {
-        actualizarCuenta(editingCuenta.id, cuenta);
+        actualizarCuenta(editingCuenta.id, {
+          ...cuenta,
+          id: editingCuenta.id
+        });
       } else {
         agregarCuenta(cuenta);
       }
+
       setIsAddCuentaDialogOpen(false);
       setEditingCuenta(null);
     } catch (error) {
-      console.error('Error al guardar la cuenta:', error);
+      setError((error as Error).message);
     } finally {
       setIsSubmitting(false);
     }
@@ -370,6 +396,14 @@ export const CatalogManager: React.FC = () => {
             >
               <Upload className="w-4 h-4" />
               Importar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAll}
+              className="flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Eliminar Todo
             </Button>
           </div>
         </div>
@@ -406,6 +440,7 @@ export const CatalogManager: React.FC = () => {
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-4 py-2 text-left">ID</th>
               <th className="px-4 py-2 text-left cursor-pointer" onClick={() => handleSort('codigo')}>
                 <div className="flex items-center gap-1">
                   Código
@@ -437,6 +472,7 @@ export const CatalogManager: React.FC = () => {
             {getSortedAndFilteredCuentas().map((cuenta) => {
               return (
                 <tr key={cuenta.id} className="border-t hover:bg-gray-50 transition-colors duration-150">
+                  <td className="px-4 py-2 text-xs text-gray-500 font-mono">{cuenta.id}</td>
                   <td className="px-4 py-2">{cuenta.codigo}</td>
                   <td className="px-4 py-2">{cuenta.nombre}</td>
                   <td className="px-4 py-2">{`${cuenta.codigo} ${cuenta.nombre}`}</td>
@@ -508,6 +544,7 @@ export const CatalogManager: React.FC = () => {
                   <li>El archivo debe estar en formato Excel (.xlsx)</li>
                   <li>La primera fila debe contener los nombres de las columnas</li>
                   <li>Las columnas requeridas son: Código, Nombre y Tipo</li>
+                  <li>La columna ID es opcional. Si se incluye, se usará para identificar la cuenta. Si se omite, se generará automáticamente</li>
                   <li>No se permiten filas vacías entre los datos</li>
                   <li>Ejemplo de estructura:</li>
                 </ul>
@@ -515,6 +552,7 @@ export const CatalogManager: React.FC = () => {
                   <table className="w-full border-collapse">
                     <thead>
                       <tr className="bg-gray-200">
+                        <th className="border p-2">ID</th>
                         <th className="border p-2">Código</th>
                         <th className="border p-2">Nombre</th>
                         <th className="border p-2">Tipo</th>
@@ -522,11 +560,13 @@ export const CatalogManager: React.FC = () => {
                     </thead>
                     <tbody>
                       <tr>
+                        <td className="border p-2">1</td>
                         <td className="border p-2">1001</td>
                         <td className="border p-2">Caja</td>
                         <td className="border p-2">gasto</td>
                       </tr>
                       <tr>
+                        <td className="border p-2">2</td>
                         <td className="border p-2">2001</td>
                         <td className="border p-2">Proveedores</td>
                         <td className="border p-2">ingreso</td>
@@ -583,6 +623,7 @@ export const CatalogManager: React.FC = () => {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
+                      <th className="text-left p-2">ID</th>
                       <th className="text-left p-2">Código</th>
                       <th className="text-left p-2">Nombre</th>
                       <th className="text-left p-2">Tipo</th>
@@ -591,6 +632,7 @@ export const CatalogManager: React.FC = () => {
                   <tbody>
                     {previewData.map((cuenta, index) => (
                       <tr key={index} className="border-b">
+                        <td className="p-2">{cuenta.id}</td>
                         <td className="p-2">{cuenta.codigo}</td>
                         <td className="p-2">{cuenta.nombre}</td>
                         <td className="p-2">{cuenta.naturaleza}</td>
@@ -627,6 +669,12 @@ export const CatalogManager: React.FC = () => {
         title={deleteConfirmation.title}
         message={deleteConfirmation.message}
         showConfirmButton={deleteConfirmation.showConfirmButton}
+      />
+
+      <UsageDetailsModal
+        isOpen={usageDetailsModalOpen}
+        onClose={() => setUsageDetailsModalOpen(false)}
+        usageDetails={usageDetails}
       />
     </div>
   );

@@ -9,6 +9,229 @@ interface ExportOptions {
   departamentosList?: Departamento[]; // Opcional, para mostrar nombres
 }
 
+export async function exportarAExcelDesnormalizado({ formato, datos, centrosCostoList = [], departamentosList = [] }: ExportOptions): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('FormatoInforme');
+
+  // Función para obtener la profundidad máxima del árbol
+  const obtenerProfundidadMaxima = (nodos: Nodo[], nivel = 0): number => {
+    let maxProfundidad = nivel;
+    nodos.forEach(nodo => {
+      if (nodo.hijos.length > 0) {
+        const profundidadHijos = obtenerProfundidadMaxima(nodo.hijos, nivel + 1);
+        maxProfundidad = Math.max(maxProfundidad, profundidadHijos);
+      }
+    });
+    return maxProfundidad;
+  };
+
+  // Obtener la profundidad máxima del árbol
+  const profundidadMaxima = obtenerProfundidadMaxima(formato.estructura) + 1;
+
+  // Configurar columnas dinámicamente
+  worksheet.columns = [
+    { header: 'Nombre del informe', key: 'nombreInforme', width: 30 },
+    ...Array.from({ length: profundidadMaxima }, (_, i) => ({
+      header: `Nivel ${i + 1}`,
+      key: `nivel${i + 1}`,
+      width: 30
+    })),
+    { header: 'Centro de costo seleccionados', key: 'centrosCostoIds', width: 30 },
+    { header: 'Nombres de centro de costo seleccionados', key: 'centrosCostoNombres', width: 40 },
+    { header: 'Departamento seleccionados', key: 'departamentosIds', width: 30 },
+    { header: 'Nombres de departamento seleccionados', key: 'departamentosNombres', width: 40 },
+    { header: 'Invertir valor', key: 'invertirValor', width: 15 },
+    { header: 'Orden global de linea en informe', key: 'ordenGlobal', width: 15 },
+    { header: 'Numero de Cuenta', key: 'numeroCuenta', width: 20 },
+    { header: 'Nombre de Cuenta', key: 'nombreCuenta', width: 30 },
+    { header: 'Tipo de Cuenta', key: 'tipoCuenta', width: 20 },
+    { header: 'Descripción completa', key: 'descripcionCompleta', width: 40 },
+    { header: 'Tipo de Nodo', key: 'tipoNodo', width: 15 },
+    { header: 'Es Linea de Informe', key: 'esLineaInforme', width: 15 }
+  ];
+
+  // Estilo para encabezados
+  worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  worksheet.getRow(1).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF000000' }
+  };
+
+  let ordenGlobal = 1;
+  
+  // Función recursiva para agregar nodos con desnormalización
+  const agregarNodos = (nodos: Nodo[], nivel: number = 0, valoresAnteriores: string[] = []) => {
+    nodos.forEach(nodo => {
+      const nuevosValores = [...valoresAnteriores];
+      if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
+        nuevosValores[nivel] = nodo.nombre;
+        if (nivel < profundidadMaxima - 1) {
+          for (let i = nivel + 1; i < profundidadMaxima; i++) {
+            nuevosValores[i] = nodo.nombre;
+          }
+        }
+      } else {
+        nuevosValores[nivel] = nodo.nombre;
+      }
+
+      // Obtener centros de costo y departamentos
+      const centrosSeleccionados = nodo.centrosCosto && nodo.centrosCosto.length > 0 
+        ? nodo.centrosCosto.map(netSuiteId => {
+            const centro = centrosCostoList.find(c => c.idNetsuite === netSuiteId);
+            return centro ? { id: netSuiteId, nombre: centro.nombre } : null;
+          }).filter(Boolean)
+        : [];
+
+      const departamentosSeleccionados = nodo.departamentos && nodo.departamentos.length > 0
+        ? nodo.departamentos.map(deptoId => {
+            const depto = departamentosList.find(d => 
+              String(d.id) === String(deptoId) || d.idNetsuite === deptoId
+            );
+            return depto ? { id: depto.id, nombre: depto.nombre } : null;
+          }).filter(Boolean)
+        : [];
+
+      // Crear base del objeto de fila
+      const baseRowData: { [key: string]: string | number | boolean } = {
+        nombreInforme: formato.nombre
+      };
+      
+      for (let i = 0; i < profundidadMaxima; i++) {
+        baseRowData[`nivel${i + 1}`] = nuevosValores[i] || '';
+      }
+
+      baseRowData['invertirValor'] = nodo.tipo === 'cuenta' && nodo.invertirValor === true ? true : false;
+      baseRowData['tipoNodo'] = nodo.tipo;
+      baseRowData['esLineaInforme'] = nodo.tipo === 'cuenta' || nodo.tipo === 'medida';
+
+      // Llenar datos de cuenta/medida
+      if (nodo.tipo === 'cuenta' && nodo.cuenta) {
+        baseRowData['numeroCuenta'] = nodo.cuenta.codigo || '';
+        baseRowData['nombreCuenta'] = nodo.cuenta.nombre || '';
+        baseRowData['tipoCuenta'] = nodo.cuenta.naturaleza || '';
+        baseRowData['descripcionCompleta'] = `${nodo.cuenta.codigo || ''} ${nodo.cuenta.nombre || ''}`.trim();
+      } else if (nodo.tipo === 'medida') {
+        baseRowData['numeroCuenta'] = nodo.nombre;
+        baseRowData['nombreCuenta'] = nodo.nombre;
+        baseRowData['tipoCuenta'] = nodo.nombre;
+        baseRowData['descripcionCompleta'] = nodo.nombre;
+      } else {
+        baseRowData['numeroCuenta'] = '';
+        baseRowData['nombreCuenta'] = '';
+        baseRowData['tipoCuenta'] = '';
+        baseRowData['descripcionCompleta'] = '';
+      }
+
+      // Desnormalizar: crear una fila por cada combinación de centro de costo y departamento
+      if (centrosSeleccionados.length > 0 && departamentosSeleccionados.length > 0) {
+        // Crear todas las combinaciones posibles
+        centrosSeleccionados.forEach(centro => {
+          departamentosSeleccionados.forEach(departamento => {
+            const rowData = { ...baseRowData };
+            rowData['centrosCostoIds'] = centro?.id || '';
+            rowData['centrosCostoNombres'] = centro?.nombre || '';
+            rowData['departamentosIds'] = departamento?.id || '';
+            rowData['departamentosNombres'] = departamento?.nombre || '';
+            
+            if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
+              rowData['ordenGlobal'] = ordenGlobal++;
+            } else {
+              rowData['ordenGlobal'] = '';
+            }
+            
+            worksheet.addRow(rowData);
+          });
+        });
+      } else if (centrosSeleccionados.length > 0) {
+        // Solo centros de costo seleccionados
+        centrosSeleccionados.forEach(centro => {
+          const rowData = { ...baseRowData };
+          rowData['centrosCostoIds'] = centro?.id || '';
+          rowData['centrosCostoNombres'] = centro?.nombre || '';
+          rowData['departamentosIds'] = '';
+          rowData['departamentosNombres'] = '';
+          
+          if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
+            rowData['ordenGlobal'] = ordenGlobal++;
+          } else {
+            rowData['ordenGlobal'] = '';
+          }
+          
+          worksheet.addRow(rowData);
+        });
+      } else if (departamentosSeleccionados.length > 0) {
+        // Solo departamentos seleccionados
+        departamentosSeleccionados.forEach(departamento => {
+          const rowData = { ...baseRowData };
+          rowData['centrosCostoIds'] = '';
+          rowData['centrosCostoNombres'] = '';
+          rowData['departamentosIds'] = departamento?.id || '';
+          rowData['departamentosNombres'] = departamento?.nombre || '';
+          
+          if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
+            rowData['ordenGlobal'] = ordenGlobal++;
+          } else {
+            rowData['ordenGlobal'] = '';
+          }
+          
+          worksheet.addRow(rowData);
+        });
+      } else {
+        // Sin centros de costo ni departamentos seleccionados
+        const rowData = { ...baseRowData };
+        rowData['centrosCostoIds'] = '';
+        rowData['centrosCostoNombres'] = '';
+        rowData['departamentosIds'] = '';
+        rowData['departamentosNombres'] = '';
+        
+        if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
+          rowData['ordenGlobal'] = ordenGlobal++;
+        } else {
+          rowData['ordenGlobal'] = '';
+        }
+        
+        worksheet.addRow(rowData);
+      }
+
+      // Si tiene hijos, continuar recursivamente
+      if (nodo.hijos.length > 0) {
+        agregarNodos(nodo.hijos, nivel + 1, nuevosValores);
+      }
+    });
+  };
+
+  // Agregar datos
+  agregarNodos(formato.estructura);
+
+  // Agregar bordes y estilo a todas las celdas con datos
+  worksheet.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+      // Si la celda contiene un número, aplicar formato numérico
+      if (!isNaN(Number(cell.value))) {
+        cell.numFmt = '#,##0.00';
+      }
+      // Estilo para datos (fondo blanco, letra negra)
+      if (rowNumber > 1) {
+        cell.font = { color: { argb: 'FF000000' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFFFFF' }
+        };
+      }
+    });
+  });
+
+  return workbook.xlsx.writeBuffer() as Promise<Buffer>;
+}
+
 export async function exportarAExcel({ formato, datos, centrosCostoList = [], departamentosList = [] }: ExportOptions): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('FormatoInforme');

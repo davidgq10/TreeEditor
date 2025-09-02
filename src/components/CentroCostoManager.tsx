@@ -28,6 +28,7 @@ import { Button } from './ui/button';
 import { Pencil, Trash2, ChevronUp, ChevronDown, Plus, Upload } from 'lucide-react';
 import { CentroCosto, Nodo } from '../types';
 import { AddCentroCostoDialog } from './AddCentroCostoDialog';
+import UsageDetailsModal from './UsageDetailsModal';
 import {
   Dialog,
   DialogContent,
@@ -57,8 +58,12 @@ export const CentroCostoManager: React.FC = () => {
   // Estados para controlar los diálogos
   const [editingCentro, setEditingCentro] = useState<CentroCosto | null>(null);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [isAddCentroDialogOpen, setIsAddCentroDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [centroToDelete, setCentroToDelete] = useState<CentroCosto | null>(null);
+  const [usageDetailsModalOpen, setUsageDetailsModalOpen] = useState(false);
+  const [usageDetails, setUsageDetails] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isAddCentroDialogOpen, setIsAddCentroDialogOpen] = useState(false);
   
   // Estados para la importación de datos
   const [previewData, setPreviewData] = useState<CentroCosto[]>([]);
@@ -246,54 +251,42 @@ export const CentroCostoManager: React.FC = () => {
   };
 
   const handleDeleteAll = () => {
-    setDeleteConfirmation({
-      isOpen: true,
-      title: 'Eliminar Todos los Centros de Costo',
-      message: '¿Estás seguro de que deseas eliminar TODOS los centros de costo? Esta acción es irreversible.',
-      onConfirm: () => {
-        eliminarTodosCentrosCosto();
-        setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
-      },
-      showConfirmButton: true
-    });
-  };
-
-  const handleDeleteCentro = (centro: CentroCosto) => {
-    // Verificar si el centro de costo está siendo utilizado en algún informe
-    const informesUsandoCentro = formatos.filter(formato => {
-      const buscarCentroEnNodos = (nodos: Nodo[]): boolean => {
-        return nodos.some(nodo => {
-          // Verificar si el centro de costo está siendo utilizado por su idNetsuite
-          if (nodo.centrosCosto && centro.idNetsuite && nodo.centrosCosto.includes(centro.idNetsuite)) {
-            return true;
-          }
-          if (nodo.hijos.length > 0) {
-            return buscarCentroEnNodos(nodo.hijos);
-          }
-          return false;
-        });
-      };
-      return buscarCentroEnNodos(formato.estructura);
+    // Verificar si algún centro de costo está siendo utilizado en algún informe
+    const centrosEnUso = centrosCosto.filter(centro => {
+      return formatos.some(formato => {
+        const buscarCentroEnNodos = (nodos: Nodo[]): boolean => {
+          return nodos.some(nodo => {
+            if (nodo.centrosCosto && centro.idNetsuite && nodo.centrosCosto.includes(centro.idNetsuite)) {
+              return true;
+            }
+            if (nodo.hijos.length > 0) {
+              return buscarCentroEnNodos(nodo.hijos);
+            }
+            return false;
+          });
+        };
+        return buscarCentroEnNodos(formato.estructura);
+      });
     });
 
-    if (informesUsandoCentro.length > 0) {
+    if (centrosEnUso.length > 0) {
       setDeleteConfirmation({
         isOpen: true,
-        title: 'No se puede eliminar el centro de costo',
+        title: 'No se pueden eliminar todos los centros de costo',
         message: (
           <div className="space-y-4">
             <div className="text-red-600 font-medium">
-              El centro de costo "{centro.nombre}" no se puede eliminar porque está siendo utilizado en los siguientes informes:
+              No se pueden eliminar todos los centros de costo porque los siguientes están siendo utilizados en informes:
             </div>
             <div className="bg-red-50 p-4 rounded-md">
               <ul className="list-disc pl-5 space-y-1">
-                {informesUsandoCentro.map(f => (
-                  <li key={f.id} className="text-gray-700">{f.nombre}</li>
+                {centrosEnUso.map(centro => (
+                  <li key={centro.id} className="text-gray-700">{centro.nombre}</li>
                 ))}
               </ul>
             </div>
             <div className="text-sm text-gray-600">
-              Por favor, elimine el centro de costo de estos informes antes de intentar eliminarlo del catálogo.
+              Por favor, elimine estos centros de costo de los informes antes de intentar eliminarlos del catálogo.
             </div>
           </div>
         ),
@@ -307,11 +300,42 @@ export const CentroCostoManager: React.FC = () => {
 
     setDeleteConfirmation({
       isOpen: true,
+      title: 'Eliminar Todos los Centros de Costo',
+      message: '¿Estás seguro de que deseas eliminar TODOS los centros de costo? Esta acción es irreversible.',
+      onConfirm: () => {
+        eliminarTodosCentrosCosto();
+        setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
+      },
+      showConfirmButton: true
+    });
+  };
+
+  const handleDeleteCentro = (centro: CentroCosto) => {
+    setDeleteConfirmation({
+      isOpen: true,
       title: 'Eliminar Centro de Costo',
       message: `¿Estás seguro de eliminar el centro de costo "${centro.nombre}"? Esta acción no se puede deshacer.`,
       onConfirm: () => {
-        eliminarCentroCosto(centro.id);
-        setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
+        try {
+          eliminarCentroCosto(centro.id);
+          setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          console.error('Error al eliminar centro de costo:', error);
+          const err = error as any;
+          if (err.usageDetails) {
+            setUsageDetails(err.usageDetails);
+            setUsageDetailsModalOpen(true);
+            setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
+          } else {
+            setDeleteConfirmation({
+              isOpen: true,
+              title: 'Error al eliminar centro de costo',
+              message: err.message || 'Error desconocido al eliminar centro de costo',
+              onConfirm: () => setDeleteConfirmation(prev => ({ ...prev, isOpen: false })),
+              showConfirmButton: false
+            });
+          }
+        }
       },
       showConfirmButton: true
     });
@@ -596,6 +620,12 @@ export const CentroCostoManager: React.FC = () => {
         title={deleteConfirmation.title}
         message={deleteConfirmation.message}
         showConfirmButton={deleteConfirmation.showConfirmButton}
+      />
+
+      <UsageDetailsModal
+        isOpen={usageDetailsModalOpen}
+        onClose={() => setUsageDetailsModalOpen(false)}
+        usageDetails={usageDetails}
       />
     </div>
   );

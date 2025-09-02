@@ -23,42 +23,37 @@
  * - Integra varios componentes de diálogo para operaciones específicas
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
-import { Pencil, Trash2, ChevronUp, ChevronDown, Plus, Upload } from 'lucide-react';
-import { Departamento } from '../types';
-import { AddDepartamentoDialog } from '@/components/AddDepartamentoDialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from './ui/dialog';
-import { Alert, AlertDescription } from './ui/alert';
-import * as XLSX from 'xlsx';
-import { DeleteConfirmationDialog } from './DeleteConfirmationDialog';
-import { useAppStore } from '../store';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from './ui/select';
 import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Card } from './ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from './ui/dialog';
+import { Alert, AlertDescription } from './ui/alert';
+import { Select, SelectContent, SelectItem, SelectTrigger } from './ui/select';
+import { Trash2, Upload, Download, Plus, ChevronUp, ChevronDown, Search, Filter, Pencil } from 'lucide-react';
+import { useAppStore } from '../store';
+import { Departamento, Nodo } from '../types';
+import { AddDepartamentoDialog } from './AddDepartamentoDialog';
+import UsageDetailsModal from './UsageDetailsModal';
+import * as XLSX from 'xlsx';
 
-type SortField = 'id' | 'nombre' | 'nombre_completo';
+type SortField = 'id' | 'nombre' | 'nombre_completo' | 'tipo';
 type SortDirection = 'asc' | 'desc';
 
 export const DepartamentoManager: React.FC = () => {
   // Estado global del store
-  const { departamentos, agregarDepartamento, actualizarDepartamento, eliminarDepartamento, eliminarTodosDepartamentos} = useAppStore();
+  const { departamentos, agregarDepartamento, actualizarDepartamento, eliminarDepartamento, eliminarTodosDepartamentos, formatos} = useAppStore();
   
   // Estados para controlar los diálogos
   const [editingDepto, setEditingDepto] = useState<Departamento | null>(null);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [isAddDeptoDialogOpen, setIsAddDeptoDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deptoToDelete, setDeptoToDelete] = useState<Departamento | null>(null);
+  const [usageDetailsModalOpen, setUsageDetailsModalOpen] = useState(false);
+  const [usageDetails, setUsageDetails] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isAddDeptoDialogOpen, setIsAddDeptoDialogOpen] = useState(false);
   
   // Estados para la importación de datos
   const [previewData, setPreviewData] = useState<Departamento[]>([]);
@@ -69,6 +64,8 @@ export const DepartamentoManager: React.FC = () => {
   // Estados para el ordenamiento
   const [sortField, setSortField] = useState<SortField>('nombre');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [filterTipo, setFilterTipo] = useState<string>('todos');
+  const [tiposDepto, setTiposDepto] = useState<Set<string>>(new Set());
   
   // Estado para el diálogo de confirmación de eliminación
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
@@ -95,14 +92,38 @@ export const DepartamentoManager: React.FC = () => {
     }
   };
 
-  const sortedDepartamentos = React.useMemo(() => {
-    const filtered = departamentos.filter(depto => {
-      if (!searchTerm) return true;
-      const term = searchTerm.toLowerCase();
-      return String(depto.id).toLowerCase().includes(term) ||
-             depto.nombre.toLowerCase().includes(term) ||
-             depto.nombre_completo.toLowerCase().includes(term);
+  // Función para obtener tipos únicos de departamentos existentes
+  const actualizarTiposDepto = () => {
+    const tipos = new Set<string>();
+    departamentos.forEach(depto => {
+      if (depto.tipo) {
+        tipos.add(depto.tipo);
+      }
     });
+    setTiposDepto(tipos);
+  };
+
+  // Actualizar tipos cuando cambian los departamentos
+  React.useEffect(() => {
+    actualizarTiposDepto();
+  }, [departamentos]);
+
+  const sortedDepartamentos = React.useMemo(() => {
+    let filtered = departamentos;
+    
+    if (filterTipo !== 'todos') {
+      filtered = filtered.filter(depto => depto.tipo === filterTipo);
+    }
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(depto => 
+        String(depto.id).toLowerCase().includes(term) ||
+        (depto.nombre && depto.nombre.toLowerCase().includes(term)) ||
+        (depto.nombre_completo && depto.nombre_completo.toLowerCase().includes(term)) ||
+        (depto.tipo && depto.tipo.toLowerCase().includes(term))
+      );
+    }
 
     return filtered.sort((a, b) => {
       const aValue = a[sortField];
@@ -113,7 +134,7 @@ export const DepartamentoManager: React.FC = () => {
       if (aValue > bValue) return 1 * direction;
       return 0;
     });
-  }, [departamentos, searchTerm, sortField, sortDirection]);
+  }, [departamentos, searchTerm, sortField, sortDirection, filterTipo]);
 
   const getSortIcon = (field: SortField) => {
     if (sortField !== field) return null;
@@ -160,9 +181,10 @@ export const DepartamentoManager: React.FC = () => {
       const idIndex = headers.findIndex(h => h === 'id');
       const nombreIndex = headers.findIndex(h => h === 'nombre');
       const nombreCompletoIndex = headers.findIndex(h => h === 'nombre_completo');
+      const tipoIndex = headers.findIndex(h => h === 'tipo');
 
-      if (nombreIndex === -1 || nombreCompletoIndex === -1) {
-        setImportError('El archivo debe contener las columnas: nombre y nombre_completo');
+      if (nombreIndex === -1 || nombreCompletoIndex === -1 || tipoIndex === -1) {
+        setImportError('El archivo debe contener las columnas: nombre, nombre_completo y tipo');
         return;
       }
 
@@ -180,10 +202,11 @@ export const DepartamentoManager: React.FC = () => {
         const idStr = idIndex > -1 ? row[idIndex]?.toString().trim() : undefined;
         const nombre = row[nombreIndex]?.toString().trim();
         const nombre_completo = row[nombreCompletoIndex]?.toString().trim();
+        const tipo = row[tipoIndex]?.toString().trim();
         let idNum: number | undefined;
 
-        if (!nombre || !nombre_completo) {
-          setImportError(`Error en la fila ${i + 1}: Faltan datos requeridos (nombre, nombre_completo).`);
+        if (!nombre || !nombre_completo || !tipo) {
+          setImportError(`Error en la fila ${i + 1}: Faltan datos requeridos (nombre, nombre_completo, tipo).`);
           return;
         }
 
@@ -214,7 +237,8 @@ export const DepartamentoManager: React.FC = () => {
         preview.push({
           id: idNum,
           nombre,
-          nombre_completo
+          nombre_completo,
+          tipo
         });
 
         nombresNuevos.add(nombre);
@@ -254,14 +278,78 @@ export const DepartamentoManager: React.FC = () => {
       title: 'Eliminar Departamento',
       message: `¿Estás seguro de eliminar el departamento "${depto.nombre}"? Esta acción no se puede deshacer.`,
       onConfirm: () => {
-        eliminarDepartamento(depto.id);
-        setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
+        try {
+          eliminarDepartamento(depto.id);
+          setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          const err = error as any;
+          if (err.usageDetails) {
+            setUsageDetails(err.usageDetails);
+            setUsageDetailsModalOpen(true);
+            setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
+          } else {
+            setDeleteConfirmation({
+              isOpen: true,
+              title: 'Error al eliminar departamento',
+              message: err.message,
+              onConfirm: () => setDeleteConfirmation(prev => ({ ...prev, isOpen: false })),
+              showConfirmButton: false
+            });
+          }
+        }
       },
       showConfirmButton: true
     });
   };
 
   const handleDeleteAll = () => {
+    // Verificar si algún departamento está siendo utilizado en algún informe
+    const deptosEnUso = departamentos.filter(depto => {
+      return formatos.some(formato => {
+        const buscarDeptoEnNodos = (nodos: Nodo[]): boolean => {
+          return nodos.some(nodo => {
+            if (nodo.departamentos && (nodo.departamentos.includes(String(depto.id)) || (depto.idNetsuite && nodo.departamentos.includes(depto.idNetsuite)))) {
+              return true;
+            }
+            if (nodo.hijos.length > 0) {
+              return buscarDeptoEnNodos(nodo.hijos);
+            }
+            return false;
+          });
+        };
+        return buscarDeptoEnNodos(formato.estructura);
+      });
+    });
+
+    if (deptosEnUso.length > 0) {
+      setDeleteConfirmation({
+        isOpen: true,
+        title: 'No se pueden eliminar todos los departamentos',
+        message: (
+          <div className="space-y-4">
+            <div className="text-red-600 font-medium">
+              No se pueden eliminar todos los departamentos porque los siguientes están siendo utilizados en informes:
+            </div>
+            <div className="bg-red-50 p-4 rounded-md">
+              <ul className="list-disc pl-5 space-y-1">
+                {deptosEnUso.map(depto => (
+                  <li key={depto.id} className="text-gray-700">{depto.nombre}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="text-sm text-gray-600">
+              Por favor, elimine estos departamentos de los informes antes de intentar eliminarlos del catálogo.
+            </div>
+          </div>
+        ),
+        onConfirm: () => {
+          setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
+        },
+        showConfirmButton: false
+      });
+      return;
+    }
+
     setDeleteConfirmation({
       isOpen: true,
       title: 'Eliminar Todos los Departamentos',
@@ -317,9 +405,27 @@ export const DepartamentoManager: React.FC = () => {
         </div>
 
         <div className="mb-4 flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Filtrar por tipo:</span>
+            <Select value={filterTipo} onValueChange={(value: string) => setFilterTipo(value)}>
+              <SelectTrigger className="w-[200px]">
+                {filterTipo === 'todos' 
+                  ? 'Todos los tipos' 
+                  : filterTipo}
+              </SelectTrigger>
+              <SelectContent className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                <SelectItem value="todos">Todos los tipos</SelectItem>
+                {Array.from(tiposDepto).sort().map((tipo) => (
+                  <SelectItem key={tipo} value={tipo}>
+                    {tipo}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex-1 max-w-md">
             <Input
-              placeholder="Buscar por nombre o nombre completo..."
+              placeholder="Buscar por nombre, nombre completo o tipo..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full"
@@ -351,6 +457,12 @@ export const DepartamentoManager: React.FC = () => {
                   {getSortIcon('nombre_completo')}
                 </div>
               </th>
+              <th className="px-4 py-2 text-left cursor-pointer" onClick={() => handleSort('tipo')}>
+                <div className="flex items-center gap-1">
+                  Tipo
+                  {getSortIcon('tipo')}
+                </div>
+              </th>
               <th className="px-4 py-2 text-right">Acciones</th>
             </tr>
           </thead>
@@ -360,6 +472,7 @@ export const DepartamentoManager: React.FC = () => {
                 <td className="px-4 py-2">{depto.id}</td>
                 <td className="px-4 py-2">{depto.nombre}</td>
                 <td className="px-4 py-2">{depto.nombre_completo}</td>
+                <td className="px-4 py-2">{depto.tipo}</td>
                 <td className="px-4 py-2 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2">
                     <Button
@@ -418,7 +531,7 @@ export const DepartamentoManager: React.FC = () => {
                 <ul className="list-disc pl-5 space-y-2">
                   <li>El archivo debe estar en formato Excel (<b>.xlsx</b> o <b>.xls</b>).</li>
                   <li>La primera fila debe contener los encabezados de las columnas.</li>
-                  <li>Las columnas requeridas son <b>nombre</b> y <b>nombre_completo</b>.</li>
+                  <li>Las columnas requeridas son <b>nombre</b>, <b>nombre_completo</b> y <b>tipo</b>.</li>
                   <li>La columna <b>id</b> es opcional. Si se incluye, se usará para actualizar departamentos existentes. Si se omite, se crearán nuevos departamentos.</li>
                   <li>Los nombres de departamento deben ser únicos.</li>
                   <li>No se permiten filas vacías entre los datos.</li>
@@ -430,6 +543,7 @@ export const DepartamentoManager: React.FC = () => {
                         <th className="border p-2">id</th>
                         <th className="border p-2">nombre</th>
                         <th className="border p-2">nombre_completo</th>
+                        <th className="border p-2">tipo</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -437,11 +551,13 @@ export const DepartamentoManager: React.FC = () => {
                         <td className="border p-2">1</td>
                         <td className="border p-2">Ventas</td>
                         <td className="border p-2">Departamento de Ventas</td>
+                        <td className="border p-2">Comercial</td>
                       </tr>
                       <tr>
                         <td className="border p-2">2</td>
                         <td className="border p-2">TI</td>
                         <td className="border p-2">Tecnologías de la Información</td>
+                        <td className="border p-2">Administrativo</td>
                       </tr>
                     </tbody>
                   </table>
@@ -498,6 +614,7 @@ export const DepartamentoManager: React.FC = () => {
                       <th className="text-left p-2">ID</th>
                       <th className="text-left p-2">Nombre</th>
                       <th className="text-left p-2">Nombre Completo</th>
+                      <th className="text-left p-2">Tipo</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -506,6 +623,7 @@ export const DepartamentoManager: React.FC = () => {
                         <td className="p-2">{depto.id}</td>
                         <td className="p-2">{depto.nombre}</td>
                         <td className="p-2">{depto.nombre_completo}</td>
+                        <td className="p-2">{depto.tipo}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -532,13 +650,31 @@ export const DepartamentoManager: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <DeleteConfirmationDialog
-        isOpen={deleteConfirmation.isOpen}
-        onClose={() => setDeleteConfirmation(prev => ({ ...prev, isOpen: false }))}
-        onConfirm={deleteConfirmation.onConfirm}
-        title={deleteConfirmation.title}
-        message={deleteConfirmation.message}
-        showConfirmButton={deleteConfirmation.showConfirmButton}
+      <Dialog open={deleteConfirmation.isOpen} onOpenChange={(open) => !open && setDeleteConfirmation(prev => ({ ...prev, isOpen: false }))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{deleteConfirmation.title}</DialogTitle>
+            <DialogDescription>
+              {typeof deleteConfirmation.message === 'string' ? deleteConfirmation.message : deleteConfirmation.message}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmation(prev => ({ ...prev, isOpen: false }))}>
+              Cancelar
+            </Button>
+            {deleteConfirmation.showConfirmButton && (
+              <Button variant="destructive" onClick={deleteConfirmation.onConfirm}>
+                Confirmar
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <UsageDetailsModal
+        isOpen={usageDetailsModalOpen}
+        onClose={() => setUsageDetailsModalOpen(false)}
+        usageDetails={usageDetails}
       />
     </div>
   );

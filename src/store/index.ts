@@ -197,7 +197,7 @@ const createStore = () => create<AppState>((set) => ({
                 tipo === 'cuenta' ? (cuenta?.nombre || 'Nueva Cuenta') : 
                 'Nueva Medida',
         cuenta: tipo === 'cuenta' ? cuenta : undefined,
-        cuentaId: tipo === 'cuenta' ? cuenta?.id : undefined,
+        cuentaId: cuenta?.id || undefined,
         hijos: [],
         centrosCosto: (tipo === 'cuenta' || tipo === 'medida') ? centrosCostoValidos : [],
         departamentos: (tipo === 'cuenta' || tipo === 'medida') ? departamentosValidos : [],
@@ -394,7 +394,7 @@ const createStore = () => create<AppState>((set) => ({
     });
   },
 
-  eliminarCuenta: (id) => {
+  eliminarCuenta: (id: string) => {
     set((state) => {
       // Verificar si la cuenta está siendo utilizada en algún informe
       const informesUsandoCuenta = state.formatos.filter(formato => {
@@ -415,7 +415,15 @@ const createStore = () => create<AppState>((set) => ({
       });
 
       if (informesUsandoCuenta.length > 0) {
-        throw new Error(`La cuenta está siendo utilizada en ${informesUsandoCuenta.length} informe(s)`);
+        const usageDetails = {
+          type: 'cuenta',
+          itemName: state.cuentas.find(c => c.id === id)?.nombre || 'Cuenta desconocida',
+          usedInFormats: informesUsandoCuenta.map(f => f.nombre),
+          count: informesUsandoCuenta.length
+        };
+        const error = new Error(`La cuenta está siendo utilizada en ${informesUsandoCuenta.length} informe(s)`);
+        (error as any).usageDetails = usageDetails;
+        throw error;
       }
 
       // Solo eliminar la cuenta si no está en uso
@@ -453,6 +461,37 @@ const createStore = () => create<AppState>((set) => ({
 
   eliminarCentroCosto: (id) => {
     set((state) => {
+      // Verificar si el centro de costo está siendo utilizado en algún informe
+      const informesUsandoCentro = state.formatos.filter(formato => {
+        const buscarCentroEnNodos = (nodos: Nodo[]): boolean => {
+          for (const nodo of nodos) {
+            if ((nodo.tipo === 'cuenta' || nodo.tipo === 'medida') && 
+                nodo.centrosCosto && nodo.centrosCosto.includes(id)) {
+              return true;
+            }
+            if (nodo.hijos && nodo.hijos.length > 0) {
+              if (buscarCentroEnNodos(nodo.hijos)) {
+                return true;
+              }
+            }
+          }
+          return false;
+        };
+        return buscarCentroEnNodos(formato.estructura);
+      });
+
+      if (informesUsandoCentro.length > 0) {
+        const usageDetails = {
+          type: 'centro',
+          itemName: state.centrosCosto.find(c => c.id === id)?.nombre || 'Centro desconocido',
+          usedInFormats: informesUsandoCentro.map(f => f.nombre),
+          count: informesUsandoCentro.length
+        };
+        const error = new Error(`El centro de costo está siendo utilizado en ${informesUsandoCentro.length} informe(s)`);
+        (error as any).usageDetails = usageDetails;
+        throw error;
+      }
+
       const newState = {
         ...state,
         centrosCosto: state.centrosCosto.filter(c => c.id !== id)
@@ -498,6 +537,37 @@ const createStore = () => create<AppState>((set) => ({
 
   eliminarDepartamento: (id: number) => {
     set((state) => {
+      // Verificar si el departamento está siendo utilizado en algún informe
+      const informesUsandoDepto = state.formatos.filter(formato => {
+        const buscarDeptoEnNodos = (nodos: Nodo[]): boolean => {
+          for (const nodo of nodos) {
+            if ((nodo.tipo === 'cuenta' || nodo.tipo === 'medida') && 
+                nodo.departamentos && nodo.departamentos.includes(String(id))) {
+              return true;
+            }
+            if (nodo.hijos && nodo.hijos.length > 0) {
+              if (buscarDeptoEnNodos(nodo.hijos)) {
+                return true;
+              }
+            }
+          }
+          return false;
+        };
+        return buscarDeptoEnNodos(formato.estructura);
+      });
+
+      if (informesUsandoDepto.length > 0) {
+        const usageDetails = {
+          type: 'departamento',
+          itemName: state.departamentos.find(d => d.id === id)?.nombre || 'Departamento desconocido',
+          usedInFormats: informesUsandoDepto.map(f => f.nombre),
+          count: informesUsandoDepto.length
+        };
+        const error = new Error(`El departamento está siendo utilizado en ${informesUsandoDepto.length} informe(s)`);
+        (error as any).usageDetails = usageDetails;
+        throw error;
+      }
+
       const newState = {
         ...state,
         departamentos: state.departamentos.filter(d => d.id !== id)
