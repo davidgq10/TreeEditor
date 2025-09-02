@@ -6,6 +6,7 @@ export type Nodo = {
   cuentaId?: string;
   hijos: Nodo[];
   centrosCosto: string[];
+  departamentos: string[];
   invertirValor?: boolean;
 };
 
@@ -14,6 +15,7 @@ export type Formato = {
   nombre: string;
   estructura: Nodo[];
   centrosCostoDefault: string[];
+  departamentosDefault: string[];
 };
 
 export type CuentaContable = {
@@ -43,6 +45,8 @@ export interface AppState {
   cuentas: CuentaContable[];
   centrosCosto: CentroCosto[];
   centrosCostoDefault: string[];
+  departamentos: Departamento[];
+  departamentosDefault: string[];
   // Acciones de Formatos
   agregarFormato: (nombre: string) => void;
   eliminarFormato: (id: string) => void;
@@ -60,4 +64,16 @@ export interface AppState {
   agregarCentroCosto: (centro: CentroCosto) => void;
   actualizarCentroCosto: (id: string, centro: CentroCosto) => void;
   eliminarCentroCosto: (id: string) => void;
+
+  // Acciones de Departamentos
+  agregarDepartamento: (depto: Departamento) => void;
+  actualizarDepartamento: (id: number, depto: Departamento) => void;
+  eliminarDepartamento: (id: number) => void;
+}
+
+export interface Departamento {
+  id: number;
+  nombre: string;
+  nombre_completo: string;
+  idNetsuite?: string;
 } 

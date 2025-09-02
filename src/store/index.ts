@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Formato, Nodo, CuentaContable, CentroCosto } from '../types';
+import { Formato, Nodo, CuentaContable, CentroCosto, Departamento } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 declare global {
@@ -20,12 +20,14 @@ interface AppState {
   cuentas: CuentaContable[];
   centrosCosto: CentroCosto[];
   centrosCostoDefault: string[];
+  departamentos: Departamento[];
+  departamentosDefault: string[];
   // Acciones de Formatos
   agregarFormato: (formato: string | Formato) => void;
   eliminarFormato: (id: string) => void;
   seleccionarFormato: (id: string) => void;
   actualizarFormato: (id: string, nombre: string) => void;
-  agregarNodo: (parentId: string | null, tipo: 'grupo' | 'cuenta' | 'medida', cuenta?: CuentaContable, centrosCosto?: string[]) => void;
+  agregarNodo: (parentId: string | null, tipo: 'grupo' | 'cuenta' | 'medida', cuenta?: CuentaContable, centrosCosto?: string[], departamentos?: string[]) => void;
   actualizarNodo: (id: string, datos: Partial<Nodo>) => void;
   eliminarNodo: (id: string) => void;
   moverNodo: (id: string, nuevoParentId: string | null, indice: number) => void;
@@ -37,84 +39,68 @@ interface AppState {
   agregarCentroCosto: (centro: CentroCosto) => void;
   actualizarCentroCosto: (id: string, centro: CentroCosto) => void;
   eliminarCentroCosto: (id: string) => void;
+  eliminarTodosCentrosCosto: () => void;
+  // Acciones de Departamentos
+  agregarDepartamento: (depto: Departamento) => void;
+  actualizarDepartamento: (id: number, depto: Departamento) => void;
+  eliminarDepartamento: (id: number) => void;
+  eliminarTodosDepartamentos: () => void;
 }
-
-// Función para inicializar el store
-const initializeStore = async () => {
-  let formatosGuardados: Formato[] = [];
-  let formatoActualGuardado: string | null = null;
-  let cuentasGuardadas: CuentaContable[] = [];
-  let centrosCostoGuardados: CentroCosto[] = [];
-  let centrosCostoDefaultGuardados: string[] = [];
-
-  // Cargar datos del store de Electron
-  if (window.electronAPI) {
-    try {
-      // Cargar datos de manera asíncrona
-      const [formatos, formatoActual, cuentas, centrosCosto, centrosCostoDefault] = await Promise.all([
-        window.electronAPI.store.get('formatos'),
-        window.electronAPI.store.get('formatoActual'),
-        window.electronAPI.store.get('cuentas'),
-        window.electronAPI.store.get('centrosCosto'),
-        window.electronAPI.store.get('centrosCostoDefault')
-      ]);
-
-      // Asignar valores o defaults si son nulos
-      formatosGuardados = formatos || [];
-      formatoActualGuardado = formatoActual || null;
-      cuentasGuardadas = cuentas || [];
-      centrosCostoGuardados = centrosCosto || [];
-      centrosCostoDefaultGuardados = centrosCostoDefault || [];
-
-      // Actualizar el store con los datos cargados
-      if (storeInstance) {
-        storeInstance.setState({
-          formatos: formatosGuardados,
-          formatoActual: formatoActualGuardado,
-          cuentas: cuentasGuardadas,
-          centrosCosto: centrosCostoGuardados,
-          centrosCostoDefault: centrosCostoDefaultGuardados
-        });
-      }
-    } catch (error) {
-      console.error('Error al cargar datos desde electron-store:', error);
-    }
-  }
-
-  return {
-    formatosGuardados,
-    formatoActualGuardado,
-    cuentasGuardadas,
-    centrosCostoGuardados,
-    centrosCostoDefaultGuardados
-  };
-};
-
-// Inicializar con valores vacíos por defecto
-let {
-  formatosGuardados,
-  formatoActualGuardado,
-  cuentasGuardadas,
-  centrosCostoGuardados,
-  centrosCostoDefaultGuardados
-} = {
-  formatosGuardados: [],
-  formatoActualGuardado: null,
-  cuentasGuardadas: [],
-  centrosCostoGuardados: [],
-  centrosCostoDefaultGuardados: []
-};
 
 // Variable para hacer referencia al store
 let storeInstance: ReturnType<typeof createStore> | null = null;
 
+// Función para inicializar el store
+const initializeStore = async () => {
+  // Cargar datos del store de Electron
+  const electronAPI = (window as any).electronAPI;
+  if (electronAPI && storeInstance) {
+    try {
+      // Cargar datos de manera asíncrona
+      const [formatos, formatoActual, cuentas, centrosCosto, centrosCostoDefault, departamentos, departamentosDefault] = await Promise.all([
+        electronAPI.store.get('formatos'),
+        electronAPI.store.get('formatoActual'),
+        electronAPI.store.get('cuentas'),
+        electronAPI.store.get('centrosCosto'),
+        electronAPI.store.get('centrosCostoDefault'),
+        electronAPI.store.get('departamentos'),
+        electronAPI.store.get('departamentosDefault')
+      ]);
+
+      // Asignar valores o defaults si son nulos
+      const formatosGuardados = formatos || [];
+      const formatoActualGuardado = formatoActual || null;
+      const cuentasGuardadas = cuentas || [];
+      const centrosCostoGuardados = centrosCosto || [];
+      const centrosCostoDefaultGuardados = centrosCostoDefault || [];
+      const departamentosGuardados = departamentos || [];
+      const departamentosDefaultGuardados = departamentosDefault || [];
+
+      // Actualizar el store con los datos cargados
+      storeInstance.setState({
+        formatos: formatosGuardados,
+        formatoActual: formatoActualGuardado,
+        cuentas: cuentasGuardadas,
+        centrosCosto: centrosCostoGuardados,
+        centrosCostoDefault: centrosCostoDefaultGuardados,
+        departamentos: departamentosGuardados,
+        departamentosDefault: departamentosDefaultGuardados
+      });
+    } catch (error) {
+      console.error('Error al cargar datos desde electron-store:', error);
+    }
+  }
+};
+
 // Función para crear el store
 const createStore = () => create<AppState>((set) => ({
-  formatos: formatosGuardados,
-  formatoActual: formatoActualGuardado,
-  cuentas: cuentasGuardadas,
-  centrosCosto: centrosCostoGuardados,
-  centrosCostoDefault: centrosCostoDefaultGuardados,
+  formatos: [],
+  formatoActual: null,
+  cuentas: [],
+  centrosCosto: [],
+  centrosCostoDefault: [],
+  departamentos: [],
+  departamentosDefault: [],
 
   // Acciones de Formatos
   agregarFormato: (formato: string | Formato) => {
@@ -126,7 +112,8 @@ const createStore = () => create<AppState>((set) => ({
         id: uuidv4(),
         nombre: formato,
         estructura: [],
-        centrosCostoDefault: []
+        centrosCostoDefault: [],
+        departamentosDefault: []
       };
     } else {
       // Si se pasa un objeto Formato, usarlo directamente
@@ -143,9 +130,10 @@ const createStore = () => create<AppState>((set) => ({
       };
       
       // Guardar en el store de Electron si está disponible
-      if (window.electronAPI) {
-        window.electronAPI.store.set('formatos', newState.formatos);
-        window.electronAPI.store.set('formatoActual', newState.formatoActual);
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI) {
+        electronAPI.store.set('formatos', newState.formatos);
+        electronAPI.store.set('formatoActual', newState.formatoActual);
       }
       
       return newState;
@@ -161,8 +149,8 @@ const createStore = () => create<AppState>((set) => ({
         )
       };
       
-      if (window.electronAPI) {
-        window.electronAPI.store.set('formatos', newState.formatos);
+      if ((window as any).electronAPI) {
+        (window as any).electronAPI.store.set('formatos', newState.formatos);
       }
       
       return newState;
@@ -175,8 +163,8 @@ const createStore = () => create<AppState>((set) => ({
         formatos: state.formatos.filter(f => f.id !== id),
         formatoActual: state.formatoActual === id ? null : state.formatoActual
       };
-      window.electronAPI?.store.set('formatos', newState.formatos);
-      window.electronAPI?.store.set('formatoActual', newState.formatoActual);
+      (window as any).electronAPI?.store.set('formatos', newState.formatos);
+      (window as any).electronAPI?.store.set('formatoActual', newState.formatoActual);
       return newState;
     });
   },
@@ -184,17 +172,22 @@ const createStore = () => create<AppState>((set) => ({
   seleccionarFormato: (id) => {
     set((state) => {
       const newState = { ...state, formatoActual: id };
-      window.electronAPI?.store.set('formatoActual', id);
+      (window as any).electronAPI?.store.set('formatoActual', id);
       return newState;
     });
   },
 
-  agregarNodo: (parentId, tipo, cuenta?: CuentaContable, centrosCosto?: string[]) => {
+  agregarNodo: (parentId, tipo, cuenta?: CuentaContable, centrosCosto?: string[], departamentos?: string[]) => {
     set((state) => {
       // Filtrar los centros de costo para asegurar que solo se incluyan idNetsuite válidos
       const centrosCostoValidos = centrosCosto?.filter(id => {
         // Verificar que sea un idNetsuite válido en la lista de centros de costo
         return state.centrosCosto.some(c => c.idNetsuite === id);
+      }) || [];
+
+      const departamentosValidos = departamentos?.filter(id => {
+        // Verificar que sea un id válido en la lista de departamentos (por id o idNetsuite)
+        return state.departamentos.some(d => d.idNetsuite === id || String(d.id) === id);
       }) || [];
 
       const nuevoNodo: Nodo = {
@@ -207,6 +200,7 @@ const createStore = () => create<AppState>((set) => ({
         cuentaId: tipo === 'cuenta' ? cuenta?.id : undefined,
         hijos: [],
         centrosCosto: (tipo === 'cuenta' || tipo === 'medida') ? centrosCostoValidos : [],
+        departamentos: (tipo === 'cuenta' || tipo === 'medida') ? departamentosValidos : [],
         invertirValor: false
       };
 
@@ -242,7 +236,7 @@ const createStore = () => create<AppState>((set) => ({
         })
       };
 
-      window.electronAPI?.store.set('formatos', newState.formatos);
+      (window as any).electronAPI?.store.set('formatos', newState.formatos);
       return newState;
     });
   },
@@ -276,7 +270,7 @@ const createStore = () => create<AppState>((set) => ({
         })
       };
 
-      window.electronAPI?.store.set('formatos', newState.formatos);
+      (window as any).electronAPI?.store.set('formatos', newState.formatos);
       return newState;
     });
   },
@@ -307,7 +301,7 @@ const createStore = () => create<AppState>((set) => ({
         })
       };
 
-      window.electronAPI?.store.set('formatos', newState.formatos);
+      (window as any).electronAPI?.store.set('formatos', newState.formatos);
       return newState;
     });
   },
@@ -372,7 +366,7 @@ const createStore = () => create<AppState>((set) => ({
         })
       };
 
-      window.electronAPI?.store.set('formatos', newState.formatos);
+      (window as any).electronAPI?.store.set('formatos', newState.formatos);
       return newState;
     });
   },
@@ -384,7 +378,7 @@ const createStore = () => create<AppState>((set) => ({
         ...state,
         cuentas: [...state.cuentas, cuenta]
       };
-      window.electronAPI?.store.set('cuentas', newState.cuentas);
+      (window as any).electronAPI?.store.set('cuentas', newState.cuentas);
       return newState;
     });
   },
@@ -395,7 +389,7 @@ const createStore = () => create<AppState>((set) => ({
         ...state,
         cuentas: state.cuentas.map(c => c.id === id ? cuenta : c)
       };
-      window.electronAPI?.store.set('cuentas', newState.cuentas);
+      (window as any).electronAPI?.store.set('cuentas', newState.cuentas);
       return newState;
     });
   },
@@ -429,7 +423,7 @@ const createStore = () => create<AppState>((set) => ({
         ...state,
         cuentas: state.cuentas.filter(c => c.id !== id)
       };
-      window.electronAPI?.store.set('cuentas', newState.cuentas);
+      (window as any).electronAPI?.store.set('cuentas', newState.cuentas);
       return newState;
     });
   },
@@ -441,7 +435,7 @@ const createStore = () => create<AppState>((set) => ({
         ...state,
         centrosCosto: [...state.centrosCosto, centro]
       };
-      window.electronAPI?.store.set('centrosCosto', newState.centrosCosto);
+      (window as any).electronAPI?.store.set('centrosCosto', newState.centrosCosto);
       return newState;
     });
   },
@@ -452,7 +446,7 @@ const createStore = () => create<AppState>((set) => ({
         ...state,
         centrosCosto: state.centrosCosto.map(c => c.id === id ? centro : c)
       };
-      window.electronAPI?.store.set('centrosCosto', newState.centrosCosto);
+      (window as any).electronAPI?.store.set('centrosCosto', newState.centrosCosto);
       return newState;
     });
   },
@@ -463,7 +457,63 @@ const createStore = () => create<AppState>((set) => ({
         ...state,
         centrosCosto: state.centrosCosto.filter(c => c.id !== id)
       };
-      window.electronAPI?.store.set('centrosCosto', newState.centrosCosto);
+      (window as any).electronAPI?.store.set('centrosCosto', newState.centrosCosto);
+      return newState;
+    });
+  },
+
+  eliminarTodosCentrosCosto: () => {
+    set((state) => {
+      const newState = {
+        ...state,
+        centrosCosto: []
+      };
+      (window as any).electronAPI?.store.set('centrosCosto', newState.centrosCosto);
+      return newState;
+    });
+  },
+
+  // Acciones de Departamentos
+  agregarDepartamento: (depto) => {
+    set((state) => {
+      const newState = {
+        ...state,
+        departamentos: [...state.departamentos, depto]
+      };
+      (window as any).electronAPI?.store.set('departamentos', newState.departamentos);
+      return newState;
+    });
+  },
+
+  actualizarDepartamento: (id: number, depto: Departamento) => {
+    set((state) => {
+      const newState = {
+        ...state,
+        departamentos: state.departamentos.map(d => d.id === id ? depto : d)
+      };
+      (window as any).electronAPI?.store.set('departamentos', newState.departamentos);
+      return newState;
+    });
+  },
+
+  eliminarDepartamento: (id: number) => {
+    set((state) => {
+      const newState = {
+        ...state,
+        departamentos: state.departamentos.filter(d => d.id !== id)
+      };
+      (window as any).electronAPI?.store.set('departamentos', newState.departamentos);
+      return newState;
+    });
+  },
+
+  eliminarTodosDepartamentos: () => {
+    set((state) => {
+      const newState = {
+        ...state,
+        departamentos: []
+      };
+      (window as any).electronAPI?.store.set('departamentos', newState.departamentos);
       return newState;
     });
   }
@@ -475,5 +525,20 @@ export const useAppStore = createStore();
 // Asignar la instancia para poder actualizarla después
 storeInstance = useAppStore;
 
-// Inicializar el store con los datos persistentes
-initializeStore();
+// Inicializar el store con los datos persistentes cuando la ventana esté lista
+if (typeof window !== 'undefined') {
+  // Esperar a que electronAPI esté disponible
+  const waitForElectronAPI = () => {
+    if ((window as any).electronAPI) {
+      initializeStore();
+    } else {
+      setTimeout(waitForElectronAPI, 100);
+    }
+  };
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', waitForElectronAPI);
+  } else {
+    waitForElectronAPI();
+  }
+}

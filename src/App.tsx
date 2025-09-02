@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { TreeEditor } from './components/TreeEditor';
 import { CatalogManager } from './components/CatalogManager';
 import { CentroCostoManager } from './components/CentroCostoManager';
+import { DepartamentoManager } from './components/DepartamentoManager';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { useAppStore } from './store';
-import { Plus, Book, Pencil, Trash2, Building2, FileText, Upload } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Upload, Download, Building2, Users, FileText, Menu, Pencil, Trash2, Book } from 'lucide-react';
 import { Formato } from './types';
 import { importFromExcel } from './services/excel';
 import { ThemeSelector } from './components/ThemeSelector';
@@ -23,6 +24,8 @@ import logoSpoon from './assets/logo-spoon.jpg';
 export const App: React.FC = () => {
   const [showCatalog, setShowCatalog] = useState(false);
   const [showCentrosCosto, setShowCentrosCosto] = useState(false);
+  const [showDepartamentos, setShowDepartamentos] = useState(false);
+  const [formatosCollapsed, setFormatosCollapsed] = useState(false);
   const [showNewFormDialog, setShowNewFormDialog] = useState(false);
   const [showEditFormDialog, setShowEditFormDialog] = useState(false);
   const [newFormName, setNewFormName] = useState('');
@@ -39,6 +42,7 @@ export const App: React.FC = () => {
     eliminarFormato,
     actualizarFormato
   } = useAppStore();
+
 
   const handleNewFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,9 +79,10 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleViewChange = (view: 'formatos' | 'catalogo' | 'centros') => {
+  const handleViewChange = (view: 'formatos' | 'catalogo' | 'centros' | 'departamentos') => {
     setShowCatalog(view === 'catalogo');
     setShowCentrosCosto(view === 'centros');
+    setShowDepartamentos(view === 'departamentos');
   };
 
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,7 +95,8 @@ export const App: React.FC = () => {
     try {
       const { formato } = await importFromExcel({
         file,
-        centrosCostoList: useAppStore.getState().centrosCosto
+        centrosCostoList: useAppStore.getState().centrosCosto,
+        departamentosList: useAppStore.getState().departamentos
       });
       
       // Obtener el nombre del archivo sin la extensión
@@ -176,6 +182,19 @@ export const App: React.FC = () => {
                   Centros de Costo
                 </button>
               </div>
+              <div className="relative">
+                <button
+                  className={`flex items-center px-4 py-2 ${showDepartamentos ? 'font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+                  style={showDepartamentos ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
+                  onClick={() => handleViewChange('departamentos')}
+                >
+                  <Users 
+                    className="w-4 h-4 mr-2" 
+                    style={showDepartamentos ? { color: 'var(--theme-primary)' } : {}} 
+                  />
+                  Departamentos
+                </button>
+              </div>
               <div className="ml-4">
                 <ThemeSelector />
               </div>
@@ -189,103 +208,116 @@ export const App: React.FC = () => {
           <CatalogManager />
         ) : showCentrosCosto ? (
           <CentroCostoManager />
+        ) : showDepartamentos ? (
+          <DepartamentoManager />
         ) : (
           <div className="flex flex-col md:flex-row gap-7">
             {/* Lista de Formatos */}
-            <div className="md:w-1/2 lg:w-1/3 flex-shrink-0">
-              <div className="bg-white rounded-lg shadow p-4 sticky top-24">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-lg font-semibold mr-2">Formatos</h2>
-                  <div className="flex gap-2">
-                    <Dialog open={showNewFormDialog} onOpenChange={setShowNewFormDialog}>
-                      <DialogTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <Plus className="w-4 h-4 mr-2" />
-                          Nuevo
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-[600px]">
-                        <DialogHeader>
-                          <DialogTitle>Nuevo Formato</DialogTitle>
-                        </DialogHeader>
-                        <form onSubmit={handleNewFormSubmit} className="space-y-4">
-                          <div>
-                            <Input
-                              type="text"
-                              placeholder="Nombre del formato"
-                              value={newFormName}
-                              onChange={(e) => setNewFormName(e.target.value)}
-                              className="w-full"
-                            />
-                          </div>
-                          <div className="flex justify-end">
-                            <Button type="submit">Crear</Button>
-                          </div>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isImporting}
-                      onClick={() => document.getElementById('import-file')?.click()}
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      {isImporting ? 'Importando...' : 'Importar'}
-                      <input
-                        id="import-file"
-                        type="file"
-                        accept=".xlsx"
-                        className="hidden"
-                        onChange={handleImport}
+            <div className={`transition-all duration-300 ${formatosCollapsed ? 'w-12' : 'w-80'}`}>
+              <div className={`${formatosCollapsed ? 'bg-transparent' : 'bg-white'} border-r border-gray-200 h-full ${formatosCollapsed ? 'p-2' : 'p-4'}`}>
+                <Button
+                  onClick={() => setFormatosCollapsed(!formatosCollapsed)}
+                  variant="ghost"
+                  size="sm"
+                  className="mb-4 p-2 hover:bg-gray-100 bg-white"
+                >
+                  <Menu className="w-4 h-4" />
+                </Button>
+                <div className={`${formatosCollapsed ? 'hidden' : 'block'}`}>
+                  <div className="mb-4">
+                    <h2 className="text-lg font-semibold mb-3">Formatos</h2>
+                    <div className="flex flex-col gap-2">
+                      <Dialog open={showNewFormDialog} onOpenChange={setShowNewFormDialog}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm" className="w-full">
+                            <Plus className="w-4 h-4 mr-2" />
+                            Nuevo
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[600px]">
+                          <DialogHeader>
+                            <DialogTitle>Nuevo Formato</DialogTitle>
+                          </DialogHeader>
+                          <form onSubmit={handleNewFormSubmit} className="space-y-4">
+                            <div>
+                              <Input
+                                type="text"
+                                placeholder="Nombre del formato"
+                                value={newFormName}
+                                onChange={(e) => setNewFormName(e.target.value)}
+                                className="w-full"
+                              />
+                            </div>
+                            <div className="flex justify-end">
+                              <Button type="submit">Crear</Button>
+                            </div>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
                         disabled={isImporting}
-                      />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {formatos.map((formato) => (
-                    <div
-                      key={formato.id}
-                      className={`
-                        flex justify-between items-center p-2 rounded
-                        ${formatoActual === formato.id ? 'active-item' : 'hover-effect'}
-                        cursor-pointer border
-                      `}
-                      onClick={() => seleccionarFormato(formato.id)}
-                    >
-                      <span>{formato.nombre}</span>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditForm(formato);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteFormato(formato);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
+                        onClick={() => document.getElementById('import-file')?.click()}
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        {isImporting ? 'Importando...' : 'Importar'}
+                        <input
+                          id="import-file"
+                          type="file"
+                          accept=".xlsx"
+                          className="hidden"
+                          onChange={handleImport}
+                          disabled={isImporting}
+                        />
+                      </Button>
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="space-y-2">
+                    {formatos.map((formato) => (
+                      <div
+                        key={formato.id}
+                        className={`
+                          flex justify-between items-center p-2 rounded
+                          ${formatoActual === formato.id ? 'active-item' : 'hover-effect'}
+                          cursor-pointer border
+                        `}
+                        onClick={() => seleccionarFormato(formato.id)}
+                      >
+                        <span>{formato.nombre}</span>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditForm(formato);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteFormato(formato);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Editor de Árbol */}
-            <div className="flex-grow bg-white rounded-lg shadow overflow-hidden" style={{ width: 'calc(100% + 20%)' }}>
+            <div className={`flex-grow bg-white rounded-lg shadow overflow-hidden transition-all duration-300 ${formatosCollapsed ? 'ml-4' : ''}`} style={{ maxWidth: formatosCollapsed ? 'calc(100vw - 120px)' : 'calc(100% + 20%)' }}>
               <TreeEditor />
             </div>
           </div>

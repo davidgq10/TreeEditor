@@ -15,7 +15,15 @@ export default defineConfig({
         build: {
           sourcemap: true,
           minify: false,
-        },
+          rollupOptions: {
+            external: ['electron'],
+            output: {
+              format: 'cjs',
+              entryFileNames: '[name].cjs',
+              chunkFileNames: '[name]-[hash].cjs'
+            }
+          }
+        }
       },
     }),
   ],

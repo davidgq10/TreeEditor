@@ -16,7 +16,7 @@ import {
 import { Button } from './ui/button';
 import { TreeNode } from './TreeNode';
 import { useAppStore } from '../store';
-import { Plus, Download, Check, X, ChevronDown, ChevronRight, Upload } from 'lucide-react';
+import { Plus, Download, Check, X, ChevronDown, ChevronRight, Upload, Minimize2, Maximize2 } from 'lucide-react';
 import { exportarAExcel, importFromExcel } from '../services/excel';
 import { Label } from './ui/label';
 import { Card } from './ui/card';
@@ -41,14 +41,18 @@ export const TreeEditor: React.FC = () => {
     agregarNodo,
     moverNodo,
     centrosCosto,
+    departamentos,
     agregarFormato
   } = useAppStore();
 
   const [centrosCostoDefault, setCentrosCostoDefault] = useState<string[]>([]);
+  const [departamentosDefault, setDepartamentosDefault] = useState<string[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [departamentosDialogOpen, setDepartamentosDialogOpen] = useState(false);
   const [isAddCuentaDialogOpen, setIsAddCuentaDialogOpen] = useState(false);
   const [showCuentaSelector, setShowCuentaSelector] = useState(false);
   const [centrosCostoExpandido, setCentrosCostoExpandido] = useState(false);
+  const [departamentosExpandido, setDepartamentosExpandido] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
   const [missingCuentas, setMissingCuentas] = useState<string[]>([]);
@@ -57,14 +61,16 @@ export const TreeEditor: React.FC = () => {
   const [importError, setImportError] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [allExpanded, setAllExpanded] = useState(true);
 
   const formato = formatos.find(f => f.id === formatoActual);
 
   useEffect(() => {
     if (formato) {
-      setCentrosCostoDefault(formato.centrosCostoDefault);
+      setCentrosCostoDefault(formato.centrosCostoDefault || []);
+      setDepartamentosDefault(formato.departamentosDefault || []);
     }
-  }, [formato?.id]);
+  }, [formato]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -121,7 +127,8 @@ export const TreeEditor: React.FC = () => {
     try {
       const { formato } = await importFromExcel({
         file,
-        centrosCostoList: centrosCosto
+        centrosCostoList: centrosCosto,
+        departamentosList: departamentos
       });
       
       // Agregar el nuevo formato importado
@@ -140,19 +147,24 @@ export const TreeEditor: React.FC = () => {
 
   const handleAddCuenta = (cuentas: CuentaContable[]) => {
     cuentas.forEach(cuenta => {
-      agregarNodo(null, 'cuenta', cuenta, centrosCostoDefault);
+      agregarNodo(null, 'cuenta', cuenta, centrosCostoDefault, departamentosDefault);
     });
   };
 
   // Función recursiva para recolectar cuentas sin centros de costo
-  function getCuentasSinCentros(nodos: Nodo[]): string[] {
+  function getCuentasSinAsignaciones(nodos: Nodo[], tipo: 'centros' | 'departamentos'): string[] {
     let result: string[] = [];
     nodos.forEach(nodo => {
-      if (nodo.tipo === 'cuenta' && (!nodo.centrosCosto || nodo.centrosCosto.length === 0)) {
+      const sinAsignacion = tipo === 'centros'
+        ? !nodo.centrosCosto || nodo.centrosCosto.length === 0
+        : !nodo.departamentos || nodo.departamentos.length === 0;
+
+      if ((nodo.tipo === 'cuenta' || nodo.tipo === 'medida') && sinAsignacion) {
         result.push(`${nodo.cuenta?.codigo || ''} ${nodo.cuenta?.nombre || nodo.nombre}`.trim());
       }
+
       if (nodo.hijos.length > 0) {
-        result = result.concat(getCuentasSinCentros(nodo.hijos));
+        result = result.concat(getCuentasSinAsignaciones(nodo.hijos, tipo));
       }
     });
     return result;
@@ -177,7 +189,7 @@ export const TreeEditor: React.FC = () => {
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex flex-wrap gap-3">
           <Button
-            onClick={() => agregarNodo(null, 'grupo', undefined, centrosCostoDefault)}
+            onClick={() => agregarNodo(null, 'grupo', undefined, centrosCostoDefault, departamentosDefault)}
             variant="outline"
             size="sm"
             className="bg-gray-50 hover:bg-gray-100 border-gray-300"
@@ -195,7 +207,7 @@ export const TreeEditor: React.FC = () => {
             Agregar Cuenta
           </Button>
           <Button
-            onClick={() => agregarNodo(null, 'medida', undefined, centrosCostoDefault)}
+            onClick={() => agregarNodo(null, 'medida', undefined, centrosCostoDefault, departamentosDefault)}
             variant="outline"
             size="sm"
             className="bg-gray-50 hover:bg-gray-100 border-gray-300"
@@ -204,18 +216,51 @@ export const TreeEditor: React.FC = () => {
             Agregar Medida
           </Button>
           <Button
+            onClick={() => setAllExpanded(false)}
+            variant="outline"
+            size="sm"
+            className="bg-gray-50 hover:bg-gray-100 border-gray-300"
+          >
+            <Minimize2 className="w-4 h-4 mr-2" />
+            Colapsar Todo
+          </Button>
+          <Button
+            onClick={() => setAllExpanded(true)}
+            variant="outline"
+            size="sm"
+            className="bg-gray-50 hover:bg-gray-100 border-gray-300"
+          >
+            <Maximize2 className="w-4 h-4 mr-2" />
+            Expandir Todo
+          </Button>
+          <Button
             onClick={async () => {
               setExportError(null);
               setExportSuccess(null);
               if (!formato) return;
-              const cuentasFaltantes = getCuentasSinCentros(formato.estructura);
-              if (cuentasFaltantes.length > 0) {
-                setMissingCuentas(cuentasFaltantes);
+
+              const cuentasSinCentros = getCuentasSinAsignaciones(formato.estructura, 'centros');
+              if (cuentasSinCentros.length > 0) {
+                setMissingCuentas(cuentasSinCentros);
                 setShowMissingModal(true);
                 return;
               }
+
+              const cuentasSinDepartamentos = getCuentasSinAsignaciones(formato.estructura, 'departamentos');
+              if (cuentasSinDepartamentos.length > 0) {
+                // Podrías crear otro estado y modal para esto, o reutilizar el existente
+                setMissingCuentas(cuentasSinDepartamentos);
+                setShowMissingModal(true); // Reutilizando el modal por simplicidad
+                return;
+              }
+
               try {
-                const buffer = await exportarAExcel({ formato, datos: {}, centrosCostoList: centrosCosto });
+                const buffer = await exportarAExcel({ 
+                  formato, 
+                  datos: {}, 
+                  centrosCostoList: centrosCosto, 
+                  departamentosList: departamentos 
+                });
                 const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -242,7 +287,8 @@ export const TreeEditor: React.FC = () => {
         </div>
       </div>
       
-      {/* 3. Centros de costo por defecto */}
+      {/* 3. Centros de costo y Departamentos por defecto */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <Card className="p-4">
         <div className="space-y-2">
           <Label className="text-lg font-semibold">Centros de Costo por Defecto</Label>
@@ -319,13 +365,13 @@ export const TreeEditor: React.FC = () => {
                   <span
                     className="ml-2 text-xs text-gray-500 align-middle max-w-[350px] truncate inline-block align-bottom"
                     title={centrosCostoDefault.length > 0 ? centrosCostoDefault.map(id => {
-                      const centro = centrosCosto.find(c => c.id === id);
+                      const centro = centrosCosto.find(c => c.idNetsuite === id);
                       return centro ? `${centro.nombre} (${centro.tipo})` : '';
                     }).filter(Boolean).join(', ') : ''}
                   >
                     {centrosCostoDefault.length > 0 &&
                       `(${centrosCostoDefault.map(id => {
-                        const centro = centrosCosto.find(c => c.id === id);
+                        const centro = centrosCosto.find(c => c.idNetsuite === id);
                         return centro ? `${centro.nombre} (${centro.tipo})` : '';
                       }).filter(Boolean).join(', ')})`}
                   </span>
@@ -360,6 +406,116 @@ export const TreeEditor: React.FC = () => {
         </div>
       </Card>
 
+      <Card className="p-4">
+        <div className="space-y-2">
+          <Label className="text-lg font-semibold">Departamentos por Defecto</Label>
+          <div>
+            <Dialog open={departamentosDialogOpen} onOpenChange={setDepartamentosDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="w-full justify-between">
+                  {departamentosDefault.length > 0
+                    ? `${departamentosDefault.length} departamentos seleccionados` : "Seleccionar departamentos"}
+                  <Plus className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Seleccionar Departamentos</DialogTitle>
+                </DialogHeader>
+                <div className="flex gap-2 mb-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDepartamentosDefault(departamentos.map(d => String(d.id)))}
+                  >
+                    Seleccionar todo
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDepartamentosDefault([])}
+                  >
+                    Quitar todo
+                  </Button>
+                </div>
+                <div className="grid gap-4 py-4 max-h-[60vh] overflow-auto">
+                  {departamentos.map((depto) => (
+                    <div key={depto.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`depto-${depto.id}`}
+                        checked={departamentosDefault.includes(String(depto.id))}
+                        onCheckedChange={(checked) => {
+                          const deptoId = String(depto.id);
+                          setDepartamentosDefault(prev => 
+                            checked 
+                              ? [...prev, deptoId] 
+                              : prev.filter(id => id !== deptoId)
+                          );
+                        }}
+                      />
+                      <label
+                        htmlFor={`depto-${depto.id}`}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      >
+                        {depto.nombre}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                <DialogFooter>
+                  <Button onClick={() => setDepartamentosDialogOpen(false)}>
+                    Aceptar
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <div className="mt-2">
+              <div className="mb-2 flex items-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="p-1 h-6 w-6 mr-2"
+                  onClick={() => setDepartamentosExpandido((v) => !v)}
+                  aria-label={departamentosExpandido ? 'Colapsar' : 'Expandir'}
+                >
+                  {departamentosExpandido ? <ChevronDown /> : <ChevronRight />}
+                </Button>
+                <span className="text-sm text-gray-600 align-middle">
+                  {departamentosDefault.length} departamentos seleccionados
+                </span>
+              </div>
+              {departamentosExpandido && (
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto border rounded p-2 bg-gray-50">
+                  {departamentosDefault.map((id) => {
+                    const depto = departamentos.find((d) => String(d.id) === id);
+                    if (!depto) return null;
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center bg-green-100 text-green-800 rounded-full px-3 py-1 text-xs font-medium"
+                      >
+                        {depto.nombre}
+                        <button
+                          type="button"
+                          className="ml-2 text-green-800 hover:text-red-600 focus:outline-none"
+                          onClick={() => setDepartamentosDefault((prev) => prev.filter((did) => did !== id))}
+                          aria-label="Eliminar departamento"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
+      </div>
+
       <div className="bg-white rounded-lg shadow p-4">
 
         <DndContext
@@ -377,15 +533,13 @@ export const TreeEditor: React.FC = () => {
                   key={node.id}
                   node={{
                     ...node,
-                    // Asegurarse que centrosCosto sea siempre un array y contenga idNetsuite válidos
-                    centrosCosto: (node.centrosCosto || [])
-                      .filter(id => {
-                        // Verificar si el id es un idNetsuite válido
-                        return centrosCosto.some(c => c.idNetsuite === id);
-                      })
+                    centrosCosto: (node.centrosCosto || []).filter(id => centrosCosto.some(c => c.idNetsuite === id)),
+                    departamentos: (node.departamentos || []).filter(id => departamentos.some(d => String(d.id) === id)),
                   }}
                   level={0}
                   centrosCostoDefault={centrosCostoDefault}
+                  departamentosDefault={departamentosDefault}
+                  forceExpanded={allExpanded}
                 />
               ))}
             </div>
@@ -407,13 +561,13 @@ export const TreeEditor: React.FC = () => {
           <DialogHeader>
             <DialogTitle>No se puede exportar</DialogTitle>
           </DialogHeader>
-          <div className="mb-2 text-red-700 font-semibold">Las siguientes cuentas no tienen centros de costo asignados:</div>
+          <div className="mb-2 text-red-700 font-semibold">Las siguientes cuentas o medidas no tienen centros de costo o departamentos asignados:</div>
           <ul className="mb-4 list-disc pl-6 text-sm text-red-700">
             {missingCuentas.map((c, i) => (
               <li key={i}>{c}</li>
             ))}
           </ul>
-          <div className="text-sm text-gray-600">Por favor, asigne al menos un centro de costo a cada cuenta antes de exportar.</div>
+          <div className="text-sm text-gray-600">Por favor, asigne al menos un centro de costo y un departamento a cada cuenta o medida antes de exportar.</div>
           <DialogFooter>
             <Button onClick={() => setShowMissingModal(false)}>Cerrar</Button>
           </DialogFooter>

@@ -1,17 +1,11 @@
 // @ts-check
-import { app, BrowserWindow, ipcMain, session } from 'electron';
-import * as path from 'path';
-import Store from 'electron-store';
-
-// Import Electron's type for IpcMainInvokeEvent
-import type { HeadersReceivedResponse, OnHeadersReceivedListenerDetails } from 'electron';
-
-// Type for the callback function
-type HeadersReceivedCallback = (response: HeadersReceivedResponse) => void;
+const { app, BrowserWindow, ipcMain, session } = require('electron');
+const path = require('path');
+const Store = require('electron-store');
 
 // Obtener la ruta del directorio actual
 const appPath = app.getAppPath();
-const isDev = process.env.NODE_ENV === 'development';
+const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
 // Inicializar el store de Electron
 const store = new Store();
@@ -25,28 +19,28 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(appPath, 'dist-electron/preload.js'),
-      sandbox: true,
-      webSecurity: true
+      preload: path.join(__dirname, 'preload.cjs'),
+      sandbox: false,
+      webSecurity: false
     },
     icon: path.join(appPath, 'icon.ico'),
     autoHideMenuBar: true,
     show: false
   });
 
-  // Configurar CSP
+  // Configurar CSP más permisivo para desarrollo
   session.defaultSession.webRequest.onHeadersReceived(
-    (details: OnHeadersReceivedListenerDetails, callback: HeadersReceivedCallback) => {
+    (details, callback) => {
       callback({
         responseHeaders: {
           ...details.responseHeaders,
           'Content-Security-Policy': [
-            "default-src 'self'; " +
+            "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; " +
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
             "style-src 'self' 'unsafe-inline'; " +
-            "img-src 'self' data:; " +
+            "img-src 'self' data: blob:; " +
             "font-src 'self' data:; " +
-            "connect-src 'self' http://localhost:*"
+            "connect-src 'self' http://localhost:* ws://localhost:*"
           ]
         }
       });
@@ -56,23 +50,25 @@ function createWindow() {
   mainWindow.maximize();
   mainWindow.show();
 
-  if (isDev) {
-    const devServerUrl = 'http://localhost:5173';
-    mainWindow.loadURL(devServerUrl).catch((err: Error) => {
-      console.error('Failed to load dev server:', err);
-    });
-    console.log('Development server running at:', devServerUrl);
+  if (VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(VITE_DEV_SERVER_URL);
   } else {
-    const indexPath = path.join(appPath, 'dist/index.html');
-    mainWindow.loadFile(indexPath).catch((err: Error) => {
-      console.error('Failed to load index.html:', err);
-    });
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
   // Abrir herramientas de desarrollo solo en desarrollo
-  if (isDev) {
+  if (VITE_DEV_SERVER_URL) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
+
+  // Debug: Log cuando la ventana está lista
+  mainWindow.webContents.once('did-finish-load', () => {
+    console.log('Window finished loading');
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Failed to load:', errorCode, errorDescription);
+  });
 
   return mainWindow;
 }
@@ -94,16 +90,16 @@ app.on('window-all-closed', () => {
 });
 
 // IPC handlers para la persistencia de datos
-ipcMain.handle('store-get', (event: Electron.IpcMainInvokeEvent, key: string) => {
+ipcMain.handle('store-get', (event, key) => {
   return store.get(key);
 });
 
-ipcMain.handle('store-set', (event: Electron.IpcMainInvokeEvent, key: string, value: any) => {
+ipcMain.handle('store-set', (event, key, value) => {
   store.set(key, value);
   return true;
 });
 
-ipcMain.handle('store-delete', (event: Electron.IpcMainInvokeEvent, key: string) => {
+ipcMain.handle('store-delete', (event, key) => {
   store.delete(key);
   return true;
 });

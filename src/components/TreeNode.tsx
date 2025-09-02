@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ChevronRight, ChevronDown, GripVertical, Trash2, Plus, X, Folder, Calculator } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useAppStore } from '../store';
-import { Nodo, CuentaContable } from '../types/index';
+import { Nodo, CuentaContable, Departamento } from '../types/index';
 import { SelectCuentaDialog } from './SelectCuentaDialog';
 import { DeleteConfirmationDialog } from './DeleteConfirmationDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger } from './ui/select';
 import { Label } from './ui/label';
 import { CentroCostoSelector } from './CentroCostoSelector';
+import { DepartamentoSelector } from './DepartamentoSelector';
 import { Switch } from './ui/switch';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
@@ -19,6 +20,8 @@ interface TreeNodeProps {
   node: Nodo;
   level: number;
   centrosCostoDefault: string[];
+  departamentosDefault: string[];
+  forceExpanded?: boolean;
 }
 
 // Paleta de colores suaves para niveles
@@ -43,11 +46,21 @@ const levelBorderColors = [
   'border-l-[6px] border-violet-500', // nivel 6 - violeta
 ];
 
-export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDefault }) => {
+export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDefault, departamentosDefault, forceExpanded }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [configExpanded, setConfigExpanded] = useState(false);
+  
+  // Efecto para manejar el colapso/expansión forzado
+  useEffect(() => {
+    if (forceExpanded !== undefined) {
+      setIsExpanded(forceExpanded);
+      setConfigExpanded(false);
+    }
+  }, [forceExpanded]);
   const [isEditing, setIsEditing] = useState(false);
   const [showCuentaDialog, setShowCuentaDialog] = useState(false);
   const [showCentroCostoDialog, setShowCentroCostoDialog] = useState(false);
+  const [showDepartamentoDialog, setShowDepartamentoDialog] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
     isOpen: boolean;
     title: string;
@@ -62,8 +75,9 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
     showConfirmButton: true
   });
   const [centrosCostoExpandido, setCentrosCostoExpandido] = useState(false);
+  const [departamentosExpandido, setDepartamentosExpandido] = useState(false);
 
-  const { actualizarNodo, eliminarNodo, agregarNodo, cuentas, centrosCosto } = useAppStore();
+  const { actualizarNodo, eliminarNodo, agregarNodo, cuentas, centrosCosto, departamentos } = useAppStore();
 
   const {
     attributes,
@@ -101,7 +115,7 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
 
   const handleSelectCuenta = (cuentas: CuentaContable[]) => {
     cuentas.forEach(cuenta => {
-      agregarNodo(node.id, 'cuenta', cuenta, centrosCostoDefault);
+      agregarNodo(node.id, 'cuenta', cuenta, centrosCostoDefault, departamentosDefault);
     });
     setShowCuentaDialog(false);
   };
@@ -135,11 +149,15 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
   };
 
   const handleAddChild = (tipo: 'grupo' | 'cuenta' | 'medida') => {
-    agregarNodo(node.id, tipo, undefined, centrosCostoDefault);
+    agregarNodo(node.id, tipo, undefined, centrosCostoDefault, departamentosDefault);
   };
 
   const handleCentroCostoSave = (centrosCosto: string[]) => {
     actualizarNodo(node.id, { centrosCosto });
+  };
+
+  const handleDepartamentoSave = (departamentos: string[]) => {
+    actualizarNodo(node.id, { departamentos });
   };
 
   const handleInvertirValorChange = (checked: boolean) => {
@@ -204,31 +222,113 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
             className="h-8 focus:ring-2 focus:ring-blue-500"
           />
         ) : (
-          <div className="flex-1 cursor-pointer" onClick={toggleEdit} style={{ cursor: node.tipo === 'grupo' || node.tipo === 'medida' ? 'pointer' : 'default' }}>
-            <div className="font-medium group-hover:text-gray-800 transition-colors">{node.nombre}</div>
-            {(node.tipo === 'cuenta' || node.tipo === 'medida') && (!node.centrosCosto || node.centrosCosto.length === 0) && (
-              <div className="mt-1 text-xs text-red-700 font-semibold">Seleccione los centros de costo</div>
-            )}
+          <div className="flex-1 flex items-center gap-3">
+            <div className="cursor-pointer" onClick={toggleEdit} style={{ cursor: node.tipo === 'grupo' || node.tipo === 'medida' ? 'pointer' : 'default' }}>
+              <div className="font-medium group-hover:text-gray-800 transition-colors">{node.nombre}</div>
+              {(node.tipo === 'cuenta' || node.tipo === 'medida') && (!node.centrosCosto || node.centrosCosto.length === 0) && (
+                <div className="mt-1 text-xs text-red-700 font-semibold">Seleccione los centros de costo</div>
+              )}
+            </div>
+            
+            {/* Invertir Valor y botón de configuración para cuentas y medidas */}
             {(node.tipo === 'cuenta' || node.tipo === 'medida') && (
-              <div className="mt-1 flex items-center gap-2">
+              <div className="flex items-center gap-3 ml-auto">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id={`invertir-valor-${node.id}`}
+                    checked={node.invertirValor || false}
+                    onCheckedChange={handleInvertirValorChange}
+                  />
+                  <Label htmlFor={`invertir-valor-${node.id}`} className="text-sm">Invertir Valor</Label>
+                </div>
+                
                 <Button
                   variant="ghost"
                   size="sm"
                   className="p-1 h-6 w-6 hover:bg-gray-100"
-                  onClick={e => { e.stopPropagation(); setCentrosCostoExpandido(v => !v); }}
-                  aria-label={centrosCostoExpandido ? 'Colapsar' : 'Expandir'}
+                  onClick={e => { e.stopPropagation(); setConfigExpanded(!configExpanded); }}
+                  aria-label={configExpanded ? 'Colapsar configuración' : 'Expandir configuración'}
                 >
-                  {centrosCostoExpandido ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                  {configExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 </Button>
-                <span className="text-xs text-gray-600 group-hover:text-gray-700 transition-colors">
-                  {node.centrosCosto && node.centrosCosto.length > 0
-                    ? `${node.centrosCosto.length} centros seleccionados`
-                    : '0 elementos seleccionados'}
-                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center gap-1">
+          {node.tipo === 'grupo' && (
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleAddChild('grupo')}
+                className="hover:bg-gray-100"
+              >
+                <Plus className="w-4 h-4 mr-1" /> Grupo
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCuentaDialog(true)}
+                className="hover:bg-gray-100"
+              >
+                <Plus className="w-4 h-4 mr-1" /> Cuenta
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleAddChild('medida')}
+                className="hover:bg-gray-100"
+              >
+                <Plus className="w-4 h-4 mr-1" /> Medida
+              </Button>
+            </div>
+          )}
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleDeleteNode}
+            className="w-8 h-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100"
+          >
+            <Trash2 className="w-4 h-4 text-red-500" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Nueva sección de configuración expandible para cuentas y medidas */}
+      {(node.tipo === 'cuenta' || node.tipo === 'medida') && configExpanded && (
+        <div style={{ marginLeft: `${level * 24 + 48}px` }} className="mr-4 mt-2 mb-2">
+          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <div className="space-y-4">
+              {/* Selector de Centros de Costo */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <Label className="text-sm font-semibold text-gray-700">Centros de Costo</Label>
+                  <Button variant="outline" size="sm" onClick={() => setShowCentroCostoDialog(true)}>
+                    Seleccionar
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="p-1 h-6 w-6 hover:bg-gray-100"
+                    onClick={e => { e.stopPropagation(); setCentrosCostoExpandido(!centrosCostoExpandido); }}
+                    aria-label={centrosCostoExpandido ? 'Colapsar' : 'Expandir'}
+                  >
+                    {centrosCostoExpandido ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                  </Button>
+                  <span className="text-sm text-gray-600">
+                    {node.centrosCosto && node.centrosCosto.length > 0
+                      ? `${node.centrosCosto.length} centros seleccionados`
+                      : '0 centros seleccionados'}
+                  </span>
+                </div>
                 {centrosCostoExpandido && node.centrosCosto && node.centrosCosto.length > 0 && (
-                  <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto border rounded p-2 bg-gray-50/50 mt-1">
+                  <div className="mt-2 flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-white rounded border">
                     {node.centrosCosto.map(centroId => {
-                      // Buscar el centro de costo por idNetsuite
                       const centro = centrosCosto.find(c => c.idNetsuite === centroId);
                       
                       if (!centro) {
@@ -244,7 +344,6 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
                             className="ml-2 text-blue-800 hover:text-red-600 focus:outline-none"
                             onClick={e => {
                               e.stopPropagation();
-                              // Eliminar el centro de costo de la lista
                               const nuevos = node.centrosCosto.filter(id => id !== centroId);
                               actualizarNodo(node.id, { centrosCosto: nuevos });
                             }}
@@ -258,80 +357,69 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
                   </div>
                 )}
               </div>
-            )}
-          </div>
-        )}
 
-        <div className="flex items-center gap-1">
-          {node.tipo === 'cuenta' && (
-            <div className="flex items-center space-x-2 mr-2">
-              <Label htmlFor={`invertir-${node.id}`} className="text-xs text-gray-600 whitespace-nowrap">
-                Invertir valor
-              </Label>
-              <Switch
-                id={`invertir-${node.id}`}
-                checked={node.invertirValor || false}
-                onCheckedChange={handleInvertirValorChange}
-                className="switch-root"
-              />
+              {/* Selector de Departamentos */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <Label className="text-sm font-semibold text-gray-700">Departamentos</Label>
+                  <Button variant="outline" size="sm" onClick={() => setShowDepartamentoDialog(true)}>
+                    Seleccionar
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="p-1 h-6 w-6 hover:bg-gray-100"
+                    onClick={e => { e.stopPropagation(); setDepartamentosExpandido(!departamentosExpandido); }}
+                    aria-label={departamentosExpandido ? 'Colapsar' : 'Expandir'}
+                  >
+                    {departamentosExpandido ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                  </Button>
+                  <span className="text-sm text-gray-600">
+                    {node.departamentos && node.departamentos.length > 0
+                      ? `${node.departamentos.length} departamentos seleccionados`
+                      : '0 departamentos seleccionados'}
+                  </span>
+                </div>
+                {departamentosExpandido && node.departamentos && node.departamentos.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-white rounded border">
+                    {node.departamentos.map(deptoId => {
+                      // Buscar por idNetsuite o por id como string
+                      const depto = departamentos.find(d => d.idNetsuite === deptoId || d.id.toString() === deptoId);
+                      
+                      if (!depto) {
+                        console.warn(`No se encontró departamento con id: ${deptoId}`);
+                        return null;
+                      }
+                      
+                      return (
+                        <span key={depto.id} className="inline-flex items-center bg-green-100 text-green-800 rounded-full px-3 py-1 text-xs font-medium hover:bg-green-200 transition-colors">
+                          {depto.nombre}
+                          <button
+                            type="button"
+                            className="ml-2 text-green-800 hover:text-red-600 focus:outline-none"
+                            onClick={e => {
+                              e.stopPropagation();
+                              const nuevos = node.departamentos.filter(id => id !== deptoId);
+                              actualizarNodo(node.id, { departamentos: nuevos });
+                            }}
+                            aria-label="Eliminar departamento"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-          {node.tipo === 'grupo' && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleAddChild('grupo')}
-                className="hover:bg-gray-100"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Grupo
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowCuentaDialog(true)}
-                className="hover:bg-gray-100"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Cuenta
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleAddChild('medida')}
-                className="hover:bg-gray-100"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Medida
-              </Button>
-            </>
-          )}
-          {(node.tipo === 'cuenta' || node.tipo === 'medida') && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowCentroCostoDialog(true)}
-                className="hover:bg-gray-100"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Centros
-              </Button>
-            </>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDeleteNode}
-            className="hover:bg-red-50 hover:text-red-600"
-          >
-            <X className="w-4 h-4" />
-          </Button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {isExpanded && node.hijos.length > 0 && (
+      {isExpanded && node.hijos && node.hijos.length > 0 && (
         <SortableContext
           items={node.hijos.map(h => h.id)}
           strategy={verticalListSortingStrategy}
@@ -342,10 +430,13 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
                 key={child.id}
                 node={{
                   ...child,
-                  centrosCosto: child.centrosCosto || []
+                  centrosCosto: child.centrosCosto || [],
+                  departamentos: child.departamentos || []
                 }}
                 level={level + 1}
                 centrosCostoDefault={centrosCostoDefault}
+                departamentosDefault={departamentosDefault}
+                forceExpanded={forceExpanded}
               />
             ))}
           </div>
@@ -365,7 +456,15 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
         onClose={() => setShowCentroCostoDialog(false)}
         onSave={handleCentroCostoSave}
         centrosCosto={centrosCosto}
-        centrosCostoDefault={(node as any).centrosCosto || centrosCostoDefault}
+        centrosCostoDefault={node.centrosCosto || centrosCostoDefault}
+      />
+
+      <DepartamentoSelector
+        isOpen={showDepartamentoDialog}
+        onClose={() => setShowDepartamentoDialog(false)}
+        onSave={handleDepartamentoSave}
+        departamentos={departamentos}
+        departamentosDefault={node.departamentos || departamentosDefault}
       />
 
       <DeleteConfirmationDialog

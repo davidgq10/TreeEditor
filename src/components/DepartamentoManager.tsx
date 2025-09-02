@@ -1,21 +1,21 @@
 /**
- * Componente: CentroCostoManager
+ * Componente: DepartamentoManager
  * 
  * Descripción:
- * Este componente es el gestor principal de centros de costo. Proporciona una interfaz completa
- * para visualizar, agregar, editar, eliminar e importar centros de costo desde archivos Excel.
+ * Este componente es el gestor principal de departamentos. Proporciona una interfaz completa
+ * para visualizar, agregar, editar, eliminar e importar departamentos desde archivos Excel.
  * 
  * Ubicación de renderizado:
- * - Es el componente principal de la sección de gestión de centros de costo
+ * - Es el componente principal de la sección de gestión de departamentos
  * - Se renderiza en la ruta principal de la aplicación
  * 
  * Funcionalidad:
- * 1. Muestra una lista de centros de costo con opciones de ordenamiento
- * 2. Permite agregar nuevos centros de costo
- * 3. Permite editar centros de costo existentes
- * 4. Permite eliminar centros de costo con confirmación
- * 5. Permite importar centros de costo desde archivos Excel
- * 6. Implementa ordenamiento por nombre y tipo
+ * 1. Muestra una lista de departamentos con opciones de ordenamiento
+ * 2. Permite agregar nuevos departamentos
+ * 3. Permite editar departamentos existentes
+ * 4. Permite eliminar departamentos con confirmación
+ * 5. Permite importar departamentos desde archivos Excel
+ * 6. Implementa ordenamiento por nombre y nombre_completo
  * 7. Maneja la validación de datos importados
  * 
  * Dependencias:
@@ -26,8 +26,8 @@
 import React, { useState, useRef } from 'react';
 import { Button } from './ui/button';
 import { Pencil, Trash2, ChevronUp, ChevronDown, Plus, Upload } from 'lucide-react';
-import { CentroCosto, Nodo } from '../types';
-import { AddCentroCostoDialog } from './AddCentroCostoDialog';
+import { Departamento } from '../types';
+import { AddDepartamentoDialog } from '@/components/AddDepartamentoDialog';
 import {
   Dialog,
   DialogContent,
@@ -47,21 +47,21 @@ import {
 } from './ui/select';
 import { Input } from './ui/input';
 
-type SortField = 'nombre' | 'tipo';
+type SortField = 'id' | 'nombre' | 'nombre_completo';
 type SortDirection = 'asc' | 'desc';
 
-export const CentroCostoManager: React.FC = () => {
+export const DepartamentoManager: React.FC = () => {
   // Estado global del store
-  const { centrosCosto, agregarCentroCosto, actualizarCentroCosto, eliminarCentroCosto, eliminarTodosCentrosCosto, formatos } = useAppStore();
+  const { departamentos, agregarDepartamento, actualizarDepartamento, eliminarDepartamento, eliminarTodosDepartamentos} = useAppStore();
   
   // Estados para controlar los diálogos
-  const [editingCentro, setEditingCentro] = useState<CentroCosto | null>(null);
+  const [editingDepto, setEditingDepto] = useState<Departamento | null>(null);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [isAddCentroDialogOpen, setIsAddCentroDialogOpen] = useState(false);
+  const [isAddDeptoDialogOpen, setIsAddDeptoDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
   // Estados para la importación de datos
-  const [previewData, setPreviewData] = useState<CentroCosto[]>([]);
+  const [previewData, setPreviewData] = useState<Departamento[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -69,8 +69,6 @@ export const CentroCostoManager: React.FC = () => {
   // Estados para el ordenamiento
   const [sortField, setSortField] = useState<SortField>('nombre');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-  const [filterTipo, setFilterTipo] = useState<string>('todos');
-  const [tiposCentro, setTiposCentro] = useState<Set<string>>(new Set());
   
   // Estado para el diálogo de confirmación de eliminación
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
@@ -87,22 +85,6 @@ export const CentroCostoManager: React.FC = () => {
     showConfirmButton: true
   });
 
-  // Función para obtener tipos únicos de centros de costo existentes
-  const actualizarTiposCentro = () => {
-    const tipos = new Set<string>();
-    centrosCosto.forEach(centro => {
-      if (centro.tipo) {
-        tipos.add(centro.tipo);
-      }
-    });
-    setTiposCentro(tipos);
-  };
-
-  // Actualizar tipos cuando cambian los centros de costo
-  React.useEffect(() => {
-    actualizarTiposCentro();
-  }, [centrosCosto]);
-
   // Función para manejar el ordenamiento de la tabla
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -113,26 +95,25 @@ export const CentroCostoManager: React.FC = () => {
     }
   };
 
-  const getSortedCentrosCosto = () => {
-    return [...centrosCosto]
-      .filter(centro => filterTipo === 'todos' || centro.tipo === filterTipo)
-      .filter(centro => {
-        if (!searchTerm) return true;
-        const term = searchTerm.toLowerCase();
-        return centro.nombre.toLowerCase().includes(term) ||
-               centro.tipo.toLowerCase().includes(term) ||
-               (centro.idNetsuite?.toLowerCase() || '').includes(term);
-      })
-      .sort((a, b) => {
-        const aValue = a[sortField];
-        const bValue = b[sortField];
-        const direction = sortDirection === 'asc' ? 1 : -1;
+  const sortedDepartamentos = React.useMemo(() => {
+    const filtered = departamentos.filter(depto => {
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
+      return String(depto.id).toLowerCase().includes(term) ||
+             depto.nombre.toLowerCase().includes(term) ||
+             depto.nombre_completo.toLowerCase().includes(term);
+    });
 
-        if (aValue < bValue) return -1 * direction;
-        if (aValue > bValue) return 1 * direction;
-        return 0;
-      });
-  };
+    return filtered.sort((a, b) => {
+      const aValue = a[sortField];
+      const bValue = b[sortField];
+      const direction = sortDirection === 'asc' ? 1 : -1;
+
+      if (aValue < bValue) return -1 * direction;
+      if (aValue > bValue) return 1 * direction;
+      return 0;
+    });
+  }, [departamentos, searchTerm, sortField, sortDirection]);
 
   const getSortIcon = (field: SortField) => {
     if (sortField !== field) return null;
@@ -160,8 +141,8 @@ export const CentroCostoManager: React.FC = () => {
   const processFile = async (file: File) => {
     try {
       const extension = file.name.split('.').pop()?.toLowerCase();
-      if (extension !== 'xlsx') {
-        setImportError('Solo se aceptan archivos Excel (.xlsx)');
+      if (extension !== 'xlsx' && extension !== 'xls') {
+        setImportError('Solo se aceptan archivos Excel (.xlsx, .xls)');
         return;
       }
 
@@ -176,52 +157,68 @@ export const CentroCostoManager: React.FC = () => {
       }
 
       const headers = data[0].map(h => h?.toString().toLowerCase().trim() || '');
-      const idNetsuiteIndex = headers.findIndex(h => h === 'id netsuite' || h === 'idnetsuite');
+      const idIndex = headers.findIndex(h => h === 'id');
       const nombreIndex = headers.findIndex(h => h === 'nombre');
-      const tipoIndex = headers.findIndex(h => h === 'tipo');
+      const nombreCompletoIndex = headers.findIndex(h => h === 'nombre_completo');
 
-      if (idNetsuiteIndex === -1 || nombreIndex === -1 || tipoIndex === -1) {
-        setImportError('El archivo debe contener las columnas: ID Netsuite, Nombre y Tipo');
+      if (nombreIndex === -1 || nombreCompletoIndex === -1) {
+        setImportError('El archivo debe contener las columnas: nombre y nombre_completo');
         return;
       }
 
-      const preview: CentroCosto[] = [];
-      const idNetsuiteExistentes = new Set(centrosCosto.map(c => c.idNetsuite));
-      const idNetsuiteNuevos = new Set<string>();
+      const preview: Departamento[] = [];
+      const nombresExistentes = new Set(departamentos.map(d => d.nombre));
+      const idsExistentes = new Set(departamentos.map(d => d.id));
+      const nombresNuevos = new Set<string>();
+      const idsNuevos = new Set<number>();
+      let maxId = departamentos.reduce((max, d) => d.id > max ? d.id : max, 0);
 
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
         if (!row || row.length === 0) continue;
 
-        const idNetsuite = row[idNetsuiteIndex]?.toString().trim();
+        const idStr = idIndex > -1 ? row[idIndex]?.toString().trim() : undefined;
         const nombre = row[nombreIndex]?.toString().trim();
-        const tipo = row[tipoIndex]?.toString().trim();
+        const nombre_completo = row[nombreCompletoIndex]?.toString().trim();
+        let idNum: number | undefined;
 
-        if (!idNetsuite || !nombre || !tipo) {
-          setImportError(`Error en la fila ${i + 1}: Faltan datos requeridos`);
+        if (!nombre || !nombre_completo) {
+          setImportError(`Error en la fila ${i + 1}: Faltan datos requeridos (nombre, nombre_completo).`);
           return;
         }
-        if (!/^[1-9][0-9]*$/.test(idNetsuite)) {
-          setImportError(`Error en la fila ${i + 1}: El ID Netsuite debe ser un número entero positivo`);
+
+        if (idStr) {
+          if (!/^\d+$/.test(idStr)) {
+            setImportError(`Error en la fila ${i + 1}: El ID '${idStr}' no es un número entero válido.`);
+            return;
+          }
+          idNum = parseInt(idStr, 10);
+          if (idsNuevos.has(idNum)) {
+            setImportError(`Error en la fila ${i + 1}: El ID '${idNum}' está duplicado en el archivo.`);
+            return;
+          }
+        } else {
+          maxId++;
+          idNum = maxId;
+        }
+
+        if (nombresNuevos.has(nombre)) {
+          setImportError(`Error en la fila ${i + 1}: El nombre de departamento '${nombre}' está duplicado en el archivo.`);
           return;
         }
-        if (idNetsuiteExistentes.has(idNetsuite)) {
-          setImportError(`Error en la fila ${i + 1}: El ID Netsuite ${idNetsuite} ya existe`);
-          return;
-        }
-        if (idNetsuiteNuevos.has(idNetsuite)) {
-          setImportError(`Error en la fila ${i + 1}: El ID Netsuite ${idNetsuite} está duplicado en el archivo`);
+        if (nombresExistentes.has(nombre) && !departamentos.some(d => d.nombre === nombre && d.id === idNum)) {
+          setImportError(`Error en la fila ${i + 1}: El departamento con nombre '${nombre}' ya existe con un ID diferente.`);
           return;
         }
 
         preview.push({
-          id: `cc-${Date.now()}-${i}`,
-          idNetsuite,
+          id: idNum,
           nombre,
-          tipo
+          nombre_completo
         });
 
-        idNetsuiteNuevos.add(idNetsuite);
+        nombresNuevos.add(nombre);
+        idsNuevos.add(idNum);
       }
 
       if (preview.length === 0) {
@@ -238,107 +235,67 @@ export const CentroCostoManager: React.FC = () => {
   };
 
   const handleImportConfirm = () => {
-    previewData.forEach(centro => {
-      agregarCentroCosto(centro);
+    previewData.forEach(depto => {
+      const existing = departamentos.find(d => d.id === depto.id);
+      if (existing) {
+        actualizarDepartamento(depto.id, depto);
+      } else {
+        // The ID was already generated and validated in processFile
+        agregarDepartamento(depto);
+      }
     });
     setPreviewData([]);
     setIsImportDialogOpen(false);
   };
 
+  const handleDeleteDepto = (depto: Departamento) => {
+    setDeleteConfirmation({
+      isOpen: true,
+      title: 'Eliminar Departamento',
+      message: `¿Estás seguro de eliminar el departamento "${depto.nombre}"? Esta acción no se puede deshacer.`,
+      onConfirm: () => {
+        eliminarDepartamento(depto.id);
+        setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
+      },
+      showConfirmButton: true
+    });
+  };
+
   const handleDeleteAll = () => {
     setDeleteConfirmation({
       isOpen: true,
-      title: 'Eliminar Todos los Centros de Costo',
-      message: '¿Estás seguro de que deseas eliminar TODOS los centros de costo? Esta acción es irreversible.',
+      title: 'Eliminar Todos los Departamentos',
+      message: '¿Estás seguro de que deseas eliminar TODOS los departamentos? Esta acción es irreversible.',
       onConfirm: () => {
-        eliminarTodosCentrosCosto();
+        eliminarTodosDepartamentos();
         setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
       },
       showConfirmButton: true
     });
   };
 
-  const handleDeleteCentro = (centro: CentroCosto) => {
-    // Verificar si el centro de costo está siendo utilizado en algún informe
-    const informesUsandoCentro = formatos.filter(formato => {
-      const buscarCentroEnNodos = (nodos: Nodo[]): boolean => {
-        return nodos.some(nodo => {
-          // Verificar si el centro de costo está siendo utilizado por su idNetsuite
-          if (nodo.centrosCosto && centro.idNetsuite && nodo.centrosCosto.includes(centro.idNetsuite)) {
-            return true;
-          }
-          if (nodo.hijos.length > 0) {
-            return buscarCentroEnNodos(nodo.hijos);
-          }
-          return false;
-        });
-      };
-      return buscarCentroEnNodos(formato.estructura);
-    });
-
-    if (informesUsandoCentro.length > 0) {
-      setDeleteConfirmation({
-        isOpen: true,
-        title: 'No se puede eliminar el centro de costo',
-        message: (
-          <div className="space-y-4">
-            <div className="text-red-600 font-medium">
-              El centro de costo "{centro.nombre}" no se puede eliminar porque está siendo utilizado en los siguientes informes:
-            </div>
-            <div className="bg-red-50 p-4 rounded-md">
-              <ul className="list-disc pl-5 space-y-1">
-                {informesUsandoCentro.map(f => (
-                  <li key={f.id} className="text-gray-700">{f.nombre}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="text-sm text-gray-600">
-              Por favor, elimine el centro de costo de estos informes antes de intentar eliminarlo del catálogo.
-            </div>
-          </div>
-        ),
-        onConfirm: () => {
-          setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
-        },
-        showConfirmButton: false
-      });
-      return;
-    }
-
-    setDeleteConfirmation({
-      isOpen: true,
-      title: 'Eliminar Centro de Costo',
-      message: `¿Estás seguro de eliminar el centro de costo "${centro.nombre}"? Esta acción no se puede deshacer.`,
-      onConfirm: () => {
-        eliminarCentroCosto(centro.id);
-        setDeleteConfirmation(prev => ({ ...prev, isOpen: false }));
-      },
-      showConfirmButton: true
-    });
-  };
-
-  const handleSaveCentro = (centro: CentroCosto) => {
-    if (editingCentro) {
-      actualizarCentroCosto(centro.id, centro);
+  const handleSaveDepto = (depto: Departamento) => {
+    if (editingDepto) {
+      actualizarDepartamento(editingDepto.id, depto);
     } else {
-      agregarCentroCosto(centro);
+      agregarDepartamento(depto);
     }
-    setEditingCentro(null);
-    setIsAddCentroDialogOpen(false);
+    setEditingDepto(null);
+    setIsAddDeptoDialogOpen(false);
   };
 
   return (
     <div className="flex flex-col h-screen">
       <div className="flex-none px-6 pt-6">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">Centros de Costo</h2>
+          <h2 className="text-2xl font-bold">Departamentos</h2>
           <div className="flex items-center gap-2">
             <Button
-              onClick={() => setIsAddCentroDialogOpen(true)}
+              onClick={() => setIsAddDeptoDialogOpen(true)}
               className="flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
-              Agregar Centro
+              Agregar Departamento
             </Button>
             <Button
               variant="outline"
@@ -360,27 +317,9 @@ export const CentroCostoManager: React.FC = () => {
         </div>
 
         <div className="mb-4 flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">Filtrar por tipo:</span>
-            <Select value={filterTipo} onValueChange={(value: string) => setFilterTipo(value)}>
-              <SelectTrigger className="w-[200px]">
-                {filterTipo === 'todos' 
-                  ? 'Todos los tipos' 
-                  : filterTipo}
-              </SelectTrigger>
-              <SelectContent className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-                <SelectItem value="todos">Todos los tipos</SelectItem>
-                {Array.from(tiposCentro).sort().map((tipo) => (
-                  <SelectItem key={tipo} value={tipo}>
-                    {tipo}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
           <div className="flex-1 max-w-md">
             <Input
-              placeholder="Buscar por nombre, tipo o ID Netsuite..."
+              placeholder="Buscar por nombre o nombre completo..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full"
@@ -388,44 +327,47 @@ export const CentroCostoManager: React.FC = () => {
           </div>
         </div>
 
+      </div>
+
+      <div className="flex-1 px-6 pb-6 overflow-auto">
         <table className="w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 sticky top-0">
             <tr>
-              <th className="px-4 py-2 text-left">ID Netsuite</th>
+              <th className="px-4 py-2 text-left cursor-pointer w-24" onClick={() => handleSort('id')}>
+                <div className="flex items-center gap-1">
+                  ID
+                  {getSortIcon('id')}
+                </div>
+              </th>
               <th className="px-4 py-2 text-left cursor-pointer" onClick={() => handleSort('nombre')}>
-                <div className="flex items-center gap-1 justify-start">
+                <div className="flex items-center gap-1">
                   Nombre
                   {getSortIcon('nombre')}
                 </div>
               </th>
-              <th className="px-4 py-2 text-left cursor-pointer" onClick={() => handleSort('tipo')}>
+              <th className="px-4 py-2 text-left cursor-pointer" onClick={() => handleSort('nombre_completo')}>
                 <div className="flex items-center gap-1">
-                  Tipo
-                  {getSortIcon('tipo')}
+                  Nombre Completo
+                  {getSortIcon('nombre_completo')}
                 </div>
               </th>
               <th className="px-4 py-2 text-right">Acciones</th>
             </tr>
           </thead>
-        </table>
-      </div>
-
-      <div className="flex-1 px-6 pb-6 overflow-auto">
-        <table className="w-full">
           <tbody>
-            {getSortedCentrosCosto().map((centro) => (
-              <tr key={centro.id} className="border-t border-gray-200 hover:bg-gray-50 transition-colors duration-150">
-                <td className="px-4 py-2">{centro.idNetsuite}</td>
-                <td className="px-4 py-2">{centro.nombre}</td>
-                <td className="px-4 py-2">{centro.tipo}</td>
+            {sortedDepartamentos.map((depto) => (
+              <tr key={depto.id} className="border-t border-gray-200 hover:bg-gray-50 transition-colors duration-150">
+                <td className="px-4 py-2">{depto.id}</td>
+                <td className="px-4 py-2">{depto.nombre}</td>
+                <td className="px-4 py-2">{depto.nombre_completo}</td>
                 <td className="px-4 py-2 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2">
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        setEditingCentro(centro);
-                        setIsAddCentroDialogOpen(true);
+                        setEditingDepto(depto);
+                        setIsAddDeptoDialogOpen(true);
                       }}
                       className="hover:bg-blue-50 hover:text-blue-600 transition-colors duration-150"
                     >
@@ -434,7 +376,7 @@ export const CentroCostoManager: React.FC = () => {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleDeleteCentro(centro)}
+                      onClick={() => handleDeleteDepto(depto)}
                       className="hover:bg-red-50 hover:text-red-600 transition-colors duration-150"
                     >
                       <Trash2 className="w-4 h-4" style={{ color: 'var(--theme-primary)' }} />
@@ -447,14 +389,14 @@ export const CentroCostoManager: React.FC = () => {
         </table>
       </div>
 
-      <AddCentroCostoDialog
-        isOpen={isAddCentroDialogOpen}
+      <AddDepartamentoDialog
+        isOpen={isAddDeptoDialogOpen || !!editingDepto}
         onClose={() => {
-          setIsAddCentroDialogOpen(false);
-          setEditingCentro(null);
+          setIsAddDeptoDialogOpen(false);
+          setEditingDepto(null);
         }}
-        centroToEdit={editingCentro}
-        onSave={handleSaveCentro}
+        deptoToEdit={editingDepto}
+        onSave={handleSaveDepto}
       />
 
       <Dialog 
@@ -469,36 +411,37 @@ export const CentroCostoManager: React.FC = () => {
       >
         <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Importar centros de costo</DialogTitle>
+            <DialogTitle>Importar Departamentos</DialogTitle>
             <DialogDescription>
               <div className="space-y-4">
-                <p>Para importar centros de costo desde un archivo Excel, siga estas indicaciones:</p>
+                <p>Para importar departamentos desde un archivo Excel, siga estas indicaciones:</p>
                 <ul className="list-disc pl-5 space-y-2">
-                  <li>El archivo debe estar en formato Excel (.xlsx)</li>
-                  <li>La primera fila debe contener los nombres de las columnas</li>
-                  <li>Las columnas requeridas son: ID Netsuite, Nombre y Tipo</li>
-                  <li>No se permiten filas vacías entre los datos</li>
-                  <li>Ejemplo de estructura:</li>
+                  <li>El archivo debe estar en formato Excel (<b>.xlsx</b> o <b>.xls</b>).</li>
+                  <li>La primera fila debe contener los encabezados de las columnas.</li>
+                  <li>Las columnas requeridas son <b>nombre</b> y <b>nombre_completo</b>.</li>
+                  <li>La columna <b>id</b> es opcional. Si se incluye, se usará para actualizar departamentos existentes. Si se omite, se crearán nuevos departamentos.</li>
+                  <li>Los nombres de departamento deben ser únicos.</li>
+                  <li>No se permiten filas vacías entre los datos.</li>
                 </ul>
                 <div className="bg-gray-100 p-4 rounded text-sm">
                   <table className="w-full border-collapse">
                     <thead>
                       <tr className="bg-gray-200">
-                        <th className="border p-2">ID Netsuite</th>
-                        <th className="border p-2">Nombre</th>
-                        <th className="border p-2">Tipo</th>
+                        <th className="border p-2">id</th>
+                        <th className="border p-2">nombre</th>
+                        <th className="border p-2">nombre_completo</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td className="border p-2">1001</td>
-                        <td className="border p-2">Administración</td>
-                        <td className="border p-2">Administrativo</td>
+                        <td className="border p-2">1</td>
+                        <td className="border p-2">Ventas</td>
+                        <td className="border p-2">Departamento de Ventas</td>
                       </tr>
                       <tr>
-                        <td className="border p-2">1002</td>
-                        <td className="border p-2">Ventas</td>
-                        <td className="border p-2">Comercial</td>
+                        <td className="border p-2">2</td>
+                        <td className="border p-2">TI</td>
+                        <td className="border p-2">Tecnologías de la Información</td>
                       </tr>
                     </tbody>
                   </table>
@@ -522,14 +465,14 @@ export const CentroCostoManager: React.FC = () => {
                 Arrastre y suelte el archivo Excel aquí, o haga clic para seleccionar un archivo
               </p>
               <p className="text-xs text-gray-500 mt-2">
-                Solo se aceptan archivos .xlsx
+                Solo se aceptan archivos .xlsx y .xls
               </p>
             </div>
             <input
               type="file"
               ref={fileInputRef}
               className="hidden"
-              accept=".xlsx"
+              accept=".xlsx,.xls"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) {
@@ -552,17 +495,17 @@ export const CentroCostoManager: React.FC = () => {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left p-2">ID Netsuite</th>
+                      <th className="text-left p-2">ID</th>
                       <th className="text-left p-2">Nombre</th>
-                      <th className="text-left p-2">Tipo</th>
+                      <th className="text-left p-2">Nombre Completo</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {previewData.map((centro, index) => (
+                    {previewData.map((depto, index) => (
                       <tr key={index} className="border-b">
-                        <td className="p-2">{centro.idNetsuite}</td>
-                        <td className="p-2">{centro.nombre}</td>
-                        <td className="p-2">{centro.tipo}</td>
+                        <td className="p-2">{depto.id}</td>
+                        <td className="p-2">{depto.nombre}</td>
+                        <td className="p-2">{depto.nombre_completo}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -599,4 +542,4 @@ export const CentroCostoManager: React.FC = () => {
       />
     </div>
   );
-}; 
+};

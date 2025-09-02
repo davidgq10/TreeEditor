@@ -1,14 +1,15 @@
 import ExcelJS from 'exceljs';
-import { Formato, Nodo, CuentaContable, CentroCosto } from '../types';
+import { Formato, Nodo, CuentaContable, CentroCosto, Departamento } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface ExportOptions {
   formato: Formato;
   datos: { [cuentaId: string]: number };
   centrosCostoList?: CentroCosto[]; // Opcional, para mostrar nombres
+  departamentosList?: Departamento[]; // Opcional, para mostrar nombres
 }
 
-export async function exportarAExcel({ formato, datos, centrosCostoList = [] }: ExportOptions): Promise<Buffer> {
+export async function exportarAExcel({ formato, datos, centrosCostoList = [], departamentosList = [] }: ExportOptions): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('FormatoInforme');
 
@@ -37,6 +38,8 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [] }: 
     })),
     { header: 'Centro de costo seleccionados', key: 'centrosCostoIds', width: 30 },
     { header: 'Nombres de centro de costo seleccionados', key: 'centrosCostoNombres', width: 40 },
+    { header: 'Departamento seleccionados', key: 'departamentosIds', width: 30 },
+    { header: 'Nombres de departamento seleccionados', key: 'departamentosNombres', width: 40 },
     { header: 'Invertir valor', key: 'invertirValor', width: 15 },
     { header: 'Orden global de linea en informe', key: 'ordenGlobal', width: 15 },
     { header: 'Numero de Cuenta', key: 'numeroCuenta', width: 20 },
@@ -94,6 +97,25 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [] }: 
       } else {
         rowData['centrosCostoIds'] = '';
         rowData['centrosCostoNombres'] = '';
+      }
+
+      // Departamentos seleccionados (ID y nombres)
+      if (nodo.departamentos && nodo.departamentos.length > 0 && departamentosList.length > 0) {
+        const departamentosEncontrados = nodo.departamentos
+          .map(deptoId => {
+            // Buscar por id (número) o por idNetsuite (string)
+            const depto = departamentosList.find(d => 
+              String(d.id) === String(deptoId) || d.idNetsuite === deptoId
+            );
+            return depto ? { id: depto.id, nombre: depto.nombre } : null;
+          })
+          .filter(Boolean);
+        
+        rowData['departamentosIds'] = departamentosEncontrados.map(d => d?.id).join(', ');
+        rowData['departamentosNombres'] = departamentosEncontrados.map(d => d?.nombre).join(', ');
+      } else {
+        rowData['departamentosIds'] = '';
+        rowData['departamentosNombres'] = '';
       }
 
       // Invertir valor (solo para cuentas contables)
@@ -177,9 +199,10 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [] }: 
 export interface ImportOptions {
   file: File;
   centrosCostoList: CentroCosto[];
+  departamentosList: Departamento[];
 }
 
-export async function importFromExcel({ file, centrosCostoList }: ImportOptions): Promise<{ formato: Formato }> {
+export async function importFromExcel({ file, centrosCostoList, departamentosList }: ImportOptions): Promise<{ formato: Formato }> {
   const arrayBuffer = await file.arrayBuffer();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(arrayBuffer);
@@ -206,6 +229,8 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
     'Invertir valor',
     'Centro de costo seleccionados',
     'Nombres de centro de costo seleccionados',
+    'Departamento seleccionados',
+    'Nombres de departamento seleccionados',
     'Es Linea de Informe'
   ];
   
@@ -222,7 +247,8 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
     id: uuidv4(),
     nombre: `Importado_${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}`,
     estructura: [],
-    centrosCostoDefault: []
+    centrosCostoDefault: [],
+    departamentosDefault: []
   };
 
   // Mapa para mantener los nodos por nivel
@@ -252,6 +278,7 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
     
     // Obtener los IDs de NetSuite de los centros de costo
     const centrosCostoCell = row.getCell(columnIndices['Centro de costo seleccionados']).value;
+    const departamentosCell = row.getCell(columnIndices['Departamento seleccionados']).value;
     console.log('Valor de la celda de centros de costo:', centrosCostoCell);
     
     // Si es un array, unirlo como string, si es string usarlo directamente
@@ -275,18 +302,47 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
     if (centrosNoEncontrados.length > 0) {
       console.warn('Los siguientes IDs de NetSuite no se encontraron en la lista de centros de costo:', centrosNoEncontrados);
     }
+
+    // Procesar departamentos
+    const departamentosStr = Array.isArray(departamentosCell)
+      ? departamentosCell.join(',')
+      : departamentosCell?.toString() || '';
     
-    // Determinar el nivel actual basado en las columnas con valores
+    const departamentosIds = departamentosStr
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+
+    const departamentosNoEncontrados = departamentosIds.filter(netSuiteId =>
+      !departamentosList.some(d => d.idNetsuite === netSuiteId)
+    );
+
+    if (departamentosNoEncontrados.length > 0) {
+      console.warn('Los siguientes IDs de NetSuite de departamentos no se encontraron:', departamentosNoEncontrados);
+    }
+    
+    // Determinar el nivel actual basado en las columnas con valores (hasta 30 niveles)
     let currentLevel = 0;
-    if (nivel10) currentLevel = 9;
-    else if (nivel9) currentLevel = 8;
-    else if (nivel8) currentLevel = 7;
-    else if (nivel7) currentLevel = 6;
-    else if (nivel6) currentLevel = 5;
-    else if (nivel5) currentLevel = 4;
-    else if (nivel4) currentLevel = 3;
-    else if (nivel3) currentLevel = 2;
-    else if (nivel2) currentLevel = 1;
+    const niveles = [nivel1, nivel2, nivel3, nivel4, nivel5, nivel6, nivel7, nivel8, nivel9, nivel10];
+    
+    // Extender para soportar hasta 30 niveles
+    for (let level = 11; level <= 30; level++) {
+      const nivelCol = columnIndices[`Nivel ${level}`];
+      if (nivelCol) {
+        const nivelValue = row.getCell(nivelCol).value?.toString()?.trim();
+        niveles.push(nivelValue);
+      } else {
+        niveles.push(null);
+      }
+    }
+    
+    // Encontrar el nivel más profundo con contenido
+    for (let i = niveles.length - 1; i >= 0; i--) {
+      if (niveles[i]) {
+        currentLevel = i;
+        break;
+      }
+    }
     
     // Obtener el tipo de nodo
     const esLineaInforme = row.getCell(columnIndices['Es Linea de Informe']).value === true;
@@ -325,6 +381,7 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
         cuentaId: tipoNodo === 'cuenta' ? cuenta?.id : undefined,
         hijos: [],
         centrosCosto: centrosCostoIds,
+        departamentos: departamentosIds,
         invertirValor
       };
       
@@ -356,6 +413,7 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
         nombre: nombreGrupo,
         hijos: [],
         centrosCosto: [],
+        departamentos: [],
         invertirValor: false
       };
       
@@ -394,6 +452,17 @@ export async function importFromExcel({ file, centrosCostoList }: ImportOptions)
   
   formato.estructura.forEach(processNode);
   formato.centrosCostoDefault = Array.from(centrosCostoDefault);
+
+  const departamentosDefault = new Set<string>();
+  const processNodeDepto = (node: Nodo) => {
+    if (node.departamentos && node.departamentos.length > 0) {
+      node.departamentos.forEach(deptoId => departamentosDefault.add(deptoId));
+    }
+    node.hijos.forEach(processNodeDepto);
+  };
+
+  formato.estructura.forEach(processNodeDepto);
+  formato.departamentosDefault = Array.from(departamentosDefault);
   
   return { formato };
 }
