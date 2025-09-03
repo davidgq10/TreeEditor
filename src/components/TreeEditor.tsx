@@ -383,7 +383,9 @@ export const TreeEditor: React.FC = () => {
                             c.tipo.toLowerCase().includes(searchTermCentros.toLowerCase());
                           return matchesType && matchesSearch;
                         });
-                        const newDefaults = centrosFiltrados.map(c => c.idNetsuite as string);
+                        const centrosAgregar = centrosFiltrados.map(c => c.idNetsuite as string);
+                        const nuevosSeleccionados = new Set([...centrosCostoDefault, ...centrosAgregar]);
+                        const newDefaults = Array.from(nuevosSeleccionados);
                         setCentrosCostoDefault(newDefaults);
                         
                         // Actualizar el formato con los nuevos valores por defecto
@@ -601,7 +603,9 @@ export const TreeEditor: React.FC = () => {
                             (d.tipo && d.tipo.toLowerCase().includes(searchTermDepartamentos.toLowerCase()));
                           return matchesType && matchesSearch;
                         });
-                        const newDefaults = deptosFiltrados.map(d => String(d.id));
+                        const deptosAgregar = deptosFiltrados.map(d => String(d.id));
+                        const nuevosSeleccionados = new Set([...departamentosDefault, ...deptosAgregar]);
+                        const newDefaults = Array.from(nuevosSeleccionados);
                         setDepartamentosDefault(newDefaults);
                         
                         // Actualizar el formato con los nuevos valores por defecto
