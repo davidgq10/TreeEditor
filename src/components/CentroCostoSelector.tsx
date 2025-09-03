@@ -74,6 +74,21 @@ export const CentroCostoSelector: React.FC<CentroCostoSelectorProps> = ({
     centro.tipo.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Obtener tipos únicos de los centros filtrados
+  const tiposUnicos = Array.from(new Set(filteredCentros.map(centro => centro.tipo))).sort();
+
+  // Función para seleccionar todos los centros de un tipo específico
+  const handleSelectByType = (tipo: string) => {
+    const centrosDelTipo = filteredCentros
+      .filter(centro => centro.tipo === tipo && centro.idNetsuite)
+      .map(centro => centro.idNetsuite as string);
+    
+    setCentrosSeleccionados(prev => {
+      const nuevosSeleccionados = new Set([...prev, ...centrosDelTipo]);
+      return Array.from(nuevosSeleccionados);
+    });
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">
@@ -81,12 +96,12 @@ export const CentroCostoSelector: React.FC<CentroCostoSelectorProps> = ({
           <DialogTitle>Seleccionar Centros de Costo</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-4 max-h-[60vh] overflow-auto">
-          <div className="flex gap-2 mb-2">
+          <div className="flex flex-wrap gap-2 mb-2">
             <Button
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => setCentrosSeleccionados(centrosCosto.filter(c => c.idNetsuite).map(c => c.idNetsuite as string))}
+              onClick={() => setCentrosSeleccionados(filteredCentros.filter(c => c.idNetsuite).map(c => c.idNetsuite as string))}
             >
               Seleccionar todo
             </Button>
@@ -99,6 +114,27 @@ export const CentroCostoSelector: React.FC<CentroCostoSelectorProps> = ({
               Quitar todo
             </Button>
           </div>
+          
+          {/* Botones para seleccionar por tipo */}
+          {tiposUnicos.length > 1 && (
+            <div className="mb-2">
+              <div className="text-xs text-gray-600 mb-1">Seleccionar por tipo:</div>
+              <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                {tiposUnicos.map(tipo => (
+                  <Button
+                    key={tipo}
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="text-xs px-2 py-1 h-6 flex-shrink-0 whitespace-nowrap"
+                    onClick={() => handleSelectByType(tipo)}
+                  >
+                    {tipo}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Campo de búsqueda */}
           <div className="relative">

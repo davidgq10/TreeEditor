@@ -70,9 +70,25 @@ export const DepartamentoSelector: React.FC<DepartamentoSelectorProps> = ({
   };
 
   const filteredDepartamentos = departamentos.filter(depto =>
-    depto.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    depto.nombre_completo.toLowerCase().includes(searchTerm.toLowerCase())
+    (depto.nombre && depto.nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (depto.nombre_completo && depto.nombre_completo.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (depto.tipo && depto.tipo.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  // Obtener tipos únicos de los departamentos filtrados
+  const tiposUnicos = Array.from(new Set(filteredDepartamentos.map(depto => depto.tipo).filter(Boolean))).sort();
+
+  // Función para seleccionar todos los departamentos de un tipo específico
+  const handleSelectByType = (tipo: string) => {
+    const departamentosDelTipo = filteredDepartamentos
+      .filter(depto => depto.tipo === tipo)
+      .map(depto => depto.id);
+    
+    setDepartamentosSeleccionados(prev => {
+      const nuevosSeleccionados = new Set([...prev, ...departamentosDelTipo]);
+      return Array.from(nuevosSeleccionados);
+    });
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -81,12 +97,12 @@ export const DepartamentoSelector: React.FC<DepartamentoSelectorProps> = ({
           <DialogTitle>Seleccionar Departamentos</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-4 max-h-[60vh] overflow-auto">
-          <div className="flex gap-2 mb-2">
+          <div className="flex flex-wrap gap-2 mb-2">
             <Button
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => setDepartamentosSeleccionados(departamentos.map(d => d.id))}
+              onClick={() => setDepartamentosSeleccionados(filteredDepartamentos.map(d => d.id))}
             >
               Seleccionar todo
             </Button>
@@ -99,6 +115,27 @@ export const DepartamentoSelector: React.FC<DepartamentoSelectorProps> = ({
               Quitar todo
             </Button>
           </div>
+          
+          {/* Botones para seleccionar por tipo */}
+          {tiposUnicos.length > 1 && (
+            <div className="mb-2">
+              <div className="text-xs text-gray-600 mb-1">Seleccionar por tipo:</div>
+              <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                {tiposUnicos.map(tipo => (
+                  <Button
+                    key={tipo}
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="text-xs px-2 py-1 h-6 flex-shrink-0 whitespace-nowrap"
+                    onClick={() => handleSelectByType(tipo)}
+                  >
+                    {tipo}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Campo de búsqueda */}
           <div className="relative">

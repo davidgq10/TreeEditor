@@ -27,6 +27,7 @@ interface AppState {
   eliminarFormato: (id: string) => void;
   seleccionarFormato: (id: string) => void;
   actualizarFormato: (id: string, nombre: string) => void;
+  actualizarFormatoDefaults: (id: string, centrosCostoDefault?: string[], departamentosDefault?: string[]) => void;
   agregarNodo: (parentId: string | null, tipo: 'grupo' | 'cuenta' | 'medida', cuenta?: CuentaContable, centrosCosto?: string[], departamentos?: string[]) => void;
   actualizarNodo: (id: string, datos: Partial<Nodo>) => void;
   eliminarNodo: (id: string) => void;
@@ -147,6 +148,33 @@ const createStore = () => create<AppState>((set) => ({
         formatos: state.formatos.map(formato => 
           formato.id === id ? { ...formato, nombre } : formato
         )
+      };
+      
+      if ((window as any).electronAPI) {
+        (window as any).electronAPI.store.set('formatos', newState.formatos);
+      }
+      
+      return newState;
+    });
+  },
+
+  actualizarFormatoDefaults: (id, centrosCostoDefault, departamentosDefault) => {
+    set((state) => {
+      const newState = {
+        ...state,
+        formatos: state.formatos.map(formato => {
+          if (formato.id === id) {
+            const updates: Partial<Formato> = {};
+            if (centrosCostoDefault !== undefined) {
+              updates.centrosCostoDefault = centrosCostoDefault;
+            }
+            if (departamentosDefault !== undefined) {
+              updates.departamentosDefault = departamentosDefault;
+            }
+            return { ...formato, ...updates };
+          }
+          return formato;
+        })
       };
       
       if ((window as any).electronAPI) {

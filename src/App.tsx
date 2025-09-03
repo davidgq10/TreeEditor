@@ -145,13 +145,13 @@ export const App: React.FC = () => {
             <div className="flex items-center gap-6">
               <div className="relative">
                 <button
-                  className={`flex items-center px-4 py-2 ${!showCatalog && !showCentrosCosto ? 'font-medium' : 'text-gray-600 hover:text-gray-900'}`}
-                  style={!showCatalog && !showCentrosCosto ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
+                  className={`flex items-center px-4 py-2 ${!showCatalog && !showCentrosCosto && !showDepartamentos ? 'font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+                  style={!showCatalog && !showCentrosCosto && !showDepartamentos ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
                   onClick={() => handleViewChange('formatos')}
                 >
                   <FileText 
                     className="w-4 h-4 mr-2" 
-                    style={!showCatalog && !showCentrosCosto ? { color: 'var(--theme-primary)' } : {}} 
+                    style={!showCatalog && !showCentrosCosto && !showDepartamentos ? { color: 'var(--theme-primary)' } : {}} 
                   />
                   Formatos
                 </button>

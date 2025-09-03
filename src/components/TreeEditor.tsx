@@ -44,7 +44,9 @@ export const TreeEditor: React.FC = () => {
     moverNodo,
     centrosCosto,
     departamentos,
-    agregarFormato
+    agregarFormato,
+    actualizarFormatoDefaults,
+    cuentas
   } = useAppStore();
 
   const [centrosCostoDefault, setCentrosCostoDefault] = useState<string[]>([]);
@@ -115,11 +117,16 @@ export const TreeEditor: React.FC = () => {
 
   const handleCentroCostoChange = (centroId: string, checked: boolean) => {
     setCentrosCostoDefault(prev => {
-      if (checked) {
-        return [...prev, centroId];
-      } else {
-        return prev.filter(id => id !== centroId);
+      const newDefaults = checked 
+        ? [...prev, centroId]
+        : prev.filter(id => id !== centroId);
+      
+      // Actualizar el formato con los nuevos valores por defecto
+      if (formato) {
+        actualizarFormatoDefaults(formato.id, newDefaults, undefined);
       }
+      
+      return newDefaults;
     });
   };
 
@@ -338,7 +345,7 @@ export const TreeEditor: React.FC = () => {
             className="bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-700"
           >
             <Download className="w-4 h-4 mr-2" />
-            Excel Desnormalizado
+            Excel expansión de combinaciones
           </Button>
         </div>
       </div>
@@ -376,7 +383,13 @@ export const TreeEditor: React.FC = () => {
                             c.tipo.toLowerCase().includes(searchTermCentros.toLowerCase());
                           return matchesType && matchesSearch;
                         });
-                        setCentrosCostoDefault(centrosFiltrados.map(c => c.idNetsuite as string));
+                        const newDefaults = centrosFiltrados.map(c => c.idNetsuite as string);
+                        setCentrosCostoDefault(newDefaults);
+                        
+                        // Actualizar el formato con los nuevos valores por defecto
+                        if (formato) {
+                          actualizarFormatoDefaults(formato.id, newDefaults, undefined);
+                        }
                       }}
                     >
                       Seleccionar todo
@@ -385,26 +398,68 @@ export const TreeEditor: React.FC = () => {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => setCentrosCostoDefault([])}
+                      onClick={() => {
+                        setCentrosCostoDefault([]);
+                        
+                        // Actualizar el formato con los nuevos valores por defecto
+                        if (formato) {
+                          actualizarFormatoDefaults(formato.id, [], undefined);
+                        }
+                      }}
                     >
                       Quitar todo
                     </Button>
-                    {filtroTipoCentros && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          const centrosPorTipo = centrosCosto.filter(c => 
-                            c.idNetsuite && c.tipo === filtroTipoCentros
-                          );
-                          setCentrosCostoDefault(centrosPorTipo.map(c => c.idNetsuite as string));
-                        }}
-                      >
-                        Seleccionar tipo: {filtroTipoCentros}
-                      </Button>
-                    )}
                   </div>
+                  
+                  {/* Botones para seleccionar por tipo */}
+                  {(() => {
+                    const centrosFiltrados = centrosCosto.filter(c => {
+                      if (!c.idNetsuite) return false;
+                      const matchesSearch = !searchTermCentros || 
+                        c.nombre.toLowerCase().includes(searchTermCentros.toLowerCase()) ||
+                        c.tipo.toLowerCase().includes(searchTermCentros.toLowerCase());
+                      return matchesSearch;
+                    });
+                    const tiposUnicos = Array.from(new Set(centrosFiltrados.map(c => c.tipo))).sort();
+                    
+                    if (tiposUnicos.length > 1) {
+                      return (
+                        <div className="mb-2">
+                          <div className="text-xs text-gray-600 mb-1">Seleccionar por tipo:</div>
+                          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                            {tiposUnicos.map(tipo => (
+                              <Button
+                                key={tipo}
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                className="text-xs px-2 py-1 h-6 flex-shrink-0 whitespace-nowrap"
+                                onClick={() => {
+                                  const centrosDelTipo = centrosFiltrados
+                                    .filter(c => c.tipo === tipo && c.idNetsuite)
+                                    .map(c => c.idNetsuite as string);
+                                  setCentrosCostoDefault(prev => {
+                                    const nuevosSeleccionados = new Set([...prev, ...centrosDelTipo]);
+                                    const newDefaults = Array.from(nuevosSeleccionados);
+                                    
+                                    // Actualizar el formato con los nuevos valores por defecto
+                                    if (formato) {
+                                      actualizarFormatoDefaults(formato.id, newDefaults, undefined);
+                                    }
+                                    
+                                    return newDefaults;
+                                  });
+                                }}
+                              >
+                                {tipo}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   <div className="space-y-2">
                     <Label htmlFor="search-centros">Buscar:</Label>
                     <Input
@@ -414,25 +469,6 @@ export const TreeEditor: React.FC = () => {
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTermCentros(e.target.value)}
                       className="w-full"
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="filtro-tipo-centros">Filtrar por tipo:</Label>
-                    <Select
-                      value={filtroTipoCentros}
-                      onValueChange={setFiltroTipoCentros}
-                    >
-                      <SelectTrigger>
-                        {filtroTipoCentros || 'Todos los tipos'}
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">Todos los tipos</SelectItem>
-                        {Array.from(new Set(centrosCosto.map(c => c.tipo))).sort().map((tipo, index) => (
-                          <SelectItem key={`centro-tipo-${index}-${tipo}`} value={tipo}>
-                            {tipo}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
                   </div>
                 </div>
                 <div className="grid gap-4 py-4 max-h-[60vh] overflow-auto">
@@ -511,7 +547,15 @@ export const TreeEditor: React.FC = () => {
                         <button
                           type="button"
                           className="ml-2 text-blue-800 hover:text-red-600 focus:outline-none"
-                          onClick={() => setCentrosCostoDefault((prev) => prev.filter((cid) => cid !== id))}
+                          onClick={() => {
+                            const newDefaults = centrosCostoDefault.filter((cid) => cid !== id);
+                            setCentrosCostoDefault(newDefaults);
+                            
+                            // Actualizar el formato con los nuevos valores por defecto
+                            if (formato) {
+                              actualizarFormatoDefaults(formato.id, newDefaults, undefined);
+                            }
+                          }}
                           aria-label="Eliminar centro de costo"
                         >
                           <X className="w-3 h-3" />
@@ -552,12 +596,18 @@ export const TreeEditor: React.FC = () => {
                         const deptosFiltrados = departamentos.filter(d => {
                           const matchesType = !filtroTipoDepartamentos || d.tipo === filtroTipoDepartamentos;
                           const matchesSearch = !searchTermDepartamentos || 
-                            d.nombre.toLowerCase().includes(searchTermDepartamentos.toLowerCase()) ||
-                            d.nombre_completo.toLowerCase().includes(searchTermDepartamentos.toLowerCase()) ||
-                            d.tipo.toLowerCase().includes(searchTermDepartamentos.toLowerCase());
+                            (d.nombre && d.nombre.toLowerCase().includes(searchTermDepartamentos.toLowerCase())) ||
+                            (d.nombre_completo && d.nombre_completo.toLowerCase().includes(searchTermDepartamentos.toLowerCase())) ||
+                            (d.tipo && d.tipo.toLowerCase().includes(searchTermDepartamentos.toLowerCase()));
                           return matchesType && matchesSearch;
                         });
-                        setDepartamentosDefault(deptosFiltrados.map(d => String(d.id)));
+                        const newDefaults = deptosFiltrados.map(d => String(d.id));
+                        setDepartamentosDefault(newDefaults);
+                        
+                        // Actualizar el formato con los nuevos valores por defecto
+                        if (formato) {
+                          actualizarFormatoDefaults(formato.id, undefined, newDefaults);
+                        }
                       }}
                     >
                       Seleccionar todo
@@ -566,26 +616,68 @@ export const TreeEditor: React.FC = () => {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => setDepartamentosDefault([])}
+                      onClick={() => {
+                        setDepartamentosDefault([]);
+                        
+                        // Actualizar el formato con los nuevos valores por defecto
+                        if (formato) {
+                          actualizarFormatoDefaults(formato.id, undefined, []);
+                        }
+                      }}
                     >
                       Quitar todo
                     </Button>
-                    {filtroTipoDepartamentos && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          const deptosPorTipo = departamentos.filter(d => 
-                            d.tipo === filtroTipoDepartamentos
-                          );
-                          setDepartamentosDefault(deptosPorTipo.map(d => String(d.id)));
-                        }}
-                      >
-                        Seleccionar tipo: {filtroTipoDepartamentos}
-                      </Button>
-                    )}
                   </div>
+                  
+                  {/* Botones para seleccionar por tipo */}
+                  {(() => {
+                    const deptosFiltrados = departamentos.filter(d => {
+                      const matchesSearch = !searchTermDepartamentos || 
+                        (d.nombre && d.nombre.toLowerCase().includes(searchTermDepartamentos.toLowerCase())) ||
+                        (d.nombre_completo && d.nombre_completo.toLowerCase().includes(searchTermDepartamentos.toLowerCase())) ||
+                        (d.tipo && d.tipo.toLowerCase().includes(searchTermDepartamentos.toLowerCase()));
+                      return matchesSearch;
+                    });
+                    const tiposUnicos = Array.from(new Set(deptosFiltrados.map(d => d.tipo).filter(Boolean))).sort();
+                    
+                    if (tiposUnicos.length > 1) {
+                      return (
+                        <div className="mb-2">
+                          <div className="text-xs text-gray-600 mb-1">Seleccionar por tipo:</div>
+                          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                            {tiposUnicos.map(tipo => (
+                              <Button
+                                key={tipo}
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                className="text-xs px-2 py-1 h-6 flex-shrink-0 whitespace-nowrap"
+                                onClick={() => {
+                                  const deptosDelTipo = deptosFiltrados
+                                    .filter(d => d.tipo === tipo)
+                                    .map(d => String(d.id));
+                                  setDepartamentosDefault(prev => {
+                                    const nuevosSeleccionados = new Set([...prev, ...deptosDelTipo]);
+                                    const newDefaults = Array.from(nuevosSeleccionados);
+                                    
+                                    // Actualizar el formato con los nuevos valores por defecto
+                                    if (formato) {
+                                      actualizarFormatoDefaults(formato.id, undefined, newDefaults);
+                                    }
+                                    
+                                    return newDefaults;
+                                  });
+                                }}
+                              >
+                                {tipo}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   <div className="space-y-2">
                     <Label htmlFor="search-departamentos">Buscar:</Label>
                     <Input
@@ -596,34 +688,15 @@ export const TreeEditor: React.FC = () => {
                       className="w-full"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="filtro-tipo-departamentos">Filtrar por tipo:</Label>
-                    <Select
-                      value={filtroTipoDepartamentos}
-                      onValueChange={setFiltroTipoDepartamentos}
-                    >
-                      <SelectTrigger>
-                        {filtroTipoDepartamentos || 'Todos los tipos'}
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">Todos los tipos</SelectItem>
-                        {Array.from(new Set(departamentos.map(d => d.tipo))).sort().map((tipo, index) => (
-                          <SelectItem key={`depto-tipo-${index}-${tipo}`} value={tipo}>
-                            {tipo}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
                 <div className="grid gap-4 py-4 max-h-[60vh] overflow-auto">
                   {departamentos
                     .filter(depto => {
                       const matchesType = !filtroTipoDepartamentos || depto.tipo === filtroTipoDepartamentos;
                       const matchesSearch = !searchTermDepartamentos || 
-                        depto.nombre.toLowerCase().includes(searchTermDepartamentos.toLowerCase()) ||
-                        depto.nombre_completo.toLowerCase().includes(searchTermDepartamentos.toLowerCase()) ||
-                        depto.tipo.toLowerCase().includes(searchTermDepartamentos.toLowerCase());
+                        (depto.nombre && depto.nombre.toLowerCase().includes(searchTermDepartamentos.toLowerCase())) ||
+                        (depto.nombre_completo && depto.nombre_completo.toLowerCase().includes(searchTermDepartamentos.toLowerCase())) ||
+                        (depto.tipo && depto.tipo.toLowerCase().includes(searchTermDepartamentos.toLowerCase()));
                       return matchesType && matchesSearch;
                     })
                     .map((depto) => (
@@ -633,11 +706,15 @@ export const TreeEditor: React.FC = () => {
                         checked={departamentosDefault.includes(String(depto.id))}
                         onCheckedChange={(checked) => {
                           const deptoId = String(depto.id);
-                          setDepartamentosDefault(prev => 
-                            checked 
-                              ? [...prev, deptoId] 
-                              : prev.filter(id => id !== deptoId)
-                          );
+                          const newDefaults = checked 
+                            ? [...departamentosDefault, deptoId] 
+                            : departamentosDefault.filter(id => id !== deptoId);
+                          setDepartamentosDefault(newDefaults);
+                          
+                          // Actualizar el formato con los nuevos valores por defecto
+                          if (formato) {
+                            actualizarFormatoDefaults(formato.id, undefined, newDefaults);
+                          }
                         }}
                       />
                       <label
@@ -685,7 +762,15 @@ export const TreeEditor: React.FC = () => {
                         <button
                           type="button"
                           className="ml-2 text-green-800 hover:text-red-600 focus:outline-none"
-                          onClick={() => setDepartamentosDefault((prev) => prev.filter((did) => did !== id))}
+                          onClick={() => {
+                            const newDefaults = departamentosDefault.filter((did) => did !== id);
+                            setDepartamentosDefault(newDefaults);
+                            
+                            // Actualizar el formato con los nuevos valores por defecto
+                            if (formato) {
+                              actualizarFormatoDefaults(formato.id, undefined, newDefaults);
+                            }
+                          }}
                           aria-label="Eliminar departamento"
                         >
                           <X className="w-3 h-3" />
@@ -736,7 +821,7 @@ export const TreeEditor: React.FC = () => {
         isOpen={showCuentaSelector}
         onClose={() => setShowCuentaSelector(false)}
         onSelect={handleAddCuenta}
-        cuentas={useAppStore.getState().cuentas}
+        cuentas={cuentas}
         multiple={true}
       />
 
