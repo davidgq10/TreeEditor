@@ -103,3 +103,7 @@ ipcMain.handle('store-delete', (event, key) => {
   store.delete(key);
   return true;
 });
+
+ipcMain.handle('get-store-path', () => {
+  return store.path;
+});

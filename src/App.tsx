@@ -3,10 +3,11 @@ import { TreeEditor } from './components/TreeEditor';
 import { CatalogManager } from './components/CatalogManager';
 import { CentroCostoManager } from './components/CentroCostoManager';
 import { DepartamentoManager } from './components/DepartamentoManager';
+import { AccountGroupManager } from './components/AccountGroupManager';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { useAppStore } from './store';
-import { ChevronLeft, ChevronRight, Plus, Upload, Download, Building2, Users, FileText, Menu, Pencil, Trash2, Book } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Upload, Download, Building2, Users, FileText, Menu, Pencil, Trash2, Book, FolderOpen } from 'lucide-react';
 import { Formato } from './types';
 import { importFromExcel } from './services/excel';
 import { ThemeSelector } from './components/ThemeSelector';
@@ -25,6 +26,7 @@ export const App: React.FC = () => {
   const [showCatalog, setShowCatalog] = useState(false);
   const [showCentrosCosto, setShowCentrosCosto] = useState(false);
   const [showDepartamentos, setShowDepartamentos] = useState(false);
+  const [showGruposCuentas, setShowGruposCuentas] = useState(false);
   const [formatosCollapsed, setFormatosCollapsed] = useState(false);
   const [showNewFormDialog, setShowNewFormDialog] = useState(false);
   const [showEditFormDialog, setShowEditFormDialog] = useState(false);
@@ -34,6 +36,7 @@ export const App: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showImportWarning, setShowImportWarning] = useState(false);
   const {
     formatos,
     formatoActual,
@@ -79,10 +82,20 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleViewChange = (view: 'formatos' | 'catalogo' | 'centros' | 'departamentos') => {
+  const handleViewChange = (view: 'formatos' | 'catalogo' | 'centros' | 'departamentos' | 'grupos') => {
     setShowCatalog(view === 'catalogo');
     setShowCentrosCosto(view === 'centros');
     setShowDepartamentos(view === 'departamentos');
+    setShowGruposCuentas(view === 'grupos');
+  };
+
+  const handleImportClick = () => {
+    setShowImportWarning(true);
+  };
+
+  const handleImportConfirm = () => {
+    setShowImportWarning(false);
+    document.getElementById('import-file')?.click();
   };
 
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,15 +112,15 @@ export const App: React.FC = () => {
         departamentosList: useAppStore.getState().departamentos
       });
       
-      // Obtener el nombre del archivo sin la extensión
-      const fileName = file.name.replace(/\.xlsx?$/i, '');
-      // Crear un nuevo formato con el nombre del archivo
-      const nuevoFormato = {
-        ...formato,
-        nombre: fileName
+      // Agregar el nuevo formato importado
+      const nuevoFormato: Formato = {
+        id: formato.id,
+        nombre: formato.nombre,
+        estructura: formato.estructura,
+        centrosCostoDefault: formato.centrosCostoDefault,
+        departamentosDefault: formato.departamentosDefault
       };
       
-      // Agregar el nuevo formato importado
       agregarFormato(nuevoFormato);
       setShowImportModal(true);
     } catch (error) {
@@ -116,7 +129,7 @@ export const App: React.FC = () => {
       setShowImportModal(true);
     } finally {
       setIsImporting(false);
-      // Limpiar el input para permitir volver a seleccionar el mismo archivo
+      // Limpiar el input file para permitir seleccionar el mismo archivo de nuevo
       event.target.value = '';
     }
   };
@@ -145,13 +158,13 @@ export const App: React.FC = () => {
             <div className="flex items-center gap-6">
               <div className="relative">
                 <button
-                  className={`flex items-center px-4 py-2 ${!showCatalog && !showCentrosCosto && !showDepartamentos ? 'font-medium' : 'text-gray-600 hover:text-gray-900'}`}
-                  style={!showCatalog && !showCentrosCosto && !showDepartamentos ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
+                  className={`flex items-center px-4 py-2 ${!showCatalog && !showCentrosCosto && !showDepartamentos && !showGruposCuentas ? 'font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+                  style={!showCatalog && !showCentrosCosto && !showDepartamentos && !showGruposCuentas ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
                   onClick={() => handleViewChange('formatos')}
                 >
                   <FileText 
                     className="w-4 h-4 mr-2" 
-                    style={!showCatalog && !showCentrosCosto && !showDepartamentos ? { color: 'var(--theme-primary)' } : {}} 
+                    style={!showCatalog && !showCentrosCosto && !showDepartamentos && !showGruposCuentas ? { color: 'var(--theme-primary)' } : {}} 
                   />
                   Formatos
                 </button>
@@ -167,6 +180,19 @@ export const App: React.FC = () => {
                     style={showCatalog ? { color: 'var(--theme-primary)' } : {}} 
                   />
                   Cuentas contables
+                </button>
+              </div>
+              <div className="relative">
+                <button
+                  className={`flex items-center px-4 py-2 ${showGruposCuentas ? 'font-medium' : 'text-gray-600 hover:text-gray-900'}`}
+                  style={showGruposCuentas ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
+                  onClick={() => handleViewChange('grupos')}
+                >
+                  <FolderOpen 
+                    className="w-4 h-4 mr-2" 
+                    style={showGruposCuentas ? { color: 'var(--theme-primary)' } : {}} 
+                  />
+                  Grupos de Cuentas
                 </button>
               </div>
               <div className="relative">
@@ -206,6 +232,8 @@ export const App: React.FC = () => {
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 pt-24">
         {showCatalog ? (
           <CatalogManager />
+        ) : showGruposCuentas ? (
+          <AccountGroupManager />
         ) : showCentrosCosto ? (
           <CentroCostoManager />
         ) : showDepartamentos ? (
@@ -257,21 +285,20 @@ export const App: React.FC = () => {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="w-full"
                         disabled={isImporting}
-                        onClick={() => document.getElementById('import-file')?.click()}
+                        onClick={handleImportClick}
                       >
                         <Upload className="w-4 h-4 mr-2" />
                         {isImporting ? 'Importando...' : 'Importar'}
-                        <input
-                          id="import-file"
-                          type="file"
-                          accept=".xlsx"
-                          className="hidden"
-                          onChange={handleImport}
-                          disabled={isImporting}
-                        />
                       </Button>
+                      <input
+                        id="import-file"
+                        type="file"
+                        accept=".xlsx"
+                        className="hidden"
+                        onChange={handleImport}
+                        disabled={isImporting}
+                      />
                     </div>
                   </div>
 
@@ -355,6 +382,55 @@ export const App: React.FC = () => {
         message={deleteConfirmation.message}
       />
 
+      {/* Modal de advertencia de importación */}
+      <Dialog open={showImportWarning} onOpenChange={setShowImportWarning}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Advertencia de Importación</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-yellow-800">
+                    Requisito importante para la importación
+                  </h3>
+                  <div className="mt-2 text-sm text-yellow-700">
+                    <p>
+                      <strong>Solo se pueden importar archivos que NO hayan sido exportados con la función "Excel Desnormalizado".</strong>
+                    </p>
+                    <p className="mt-2">
+                      Si el archivo fue exportado usando la opción "Excel Desnormalizado" (que expande las combinaciones de centros de costo y departamentos), 
+                      la importación no funcionará correctamente y podría generar datos incorrectos.
+                    </p>
+                    <p className="mt-2">
+                      Asegúrese de usar únicamente archivos exportados con la función "Excel" estándar.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowImportWarning(false)}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleImportConfirm}>
+              Continuar con la importación
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de resultado de importación */}
       <Dialog open={showImportModal} onOpenChange={setShowImportModal}>
         <DialogContent>
           <DialogHeader>
@@ -364,8 +440,13 @@ export const App: React.FC = () => {
             {importError ? (
               <p className="text-red-600">{importError}</p>
             ) : (
-              <p>El formato se ha importado correctamente.</p>
+              <p className="text-green-600">El archivo se ha importado correctamente.</p>
             )}
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={() => setShowImportModal(false)}>
+              Cerrar
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

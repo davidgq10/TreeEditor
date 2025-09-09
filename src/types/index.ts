@@ -22,7 +22,16 @@ export type CuentaContable = {
   id: string;
   codigo: string;
   nombre: string;
-  naturaleza: 'gasto' | 'ingreso';
+  naturaleza: string;
+};
+
+export type GrupoCuentas = {
+  id: string;
+  nombre: string;
+  descripcion?: string;
+  cuentas: string[]; // IDs de las cuentas
+  fechaCreacion: Date;
+  fechaModificacion: Date;
 };
 
 export type PreviewData = {
@@ -43,6 +52,7 @@ export interface AppState {
   formatos: Formato[];
   formatoActual: string | null;
   cuentas: CuentaContable[];
+  gruposCuentas: GrupoCuentas[];
   centrosCosto: CentroCosto[];
   centrosCostoDefault: string[];
   departamentos: Departamento[];
@@ -53,6 +63,7 @@ export interface AppState {
   seleccionarFormato: (id: string) => void;
   actualizarFormato: (id: string, nombre: string) => void;
   agregarNodo: (parentId: string | null, tipo: 'grupo' | 'cuenta' | 'medida', cuenta?: CuentaContable, centrosCosto?: string[]) => void;
+  agregarNodoGrupoCuentas: (parentId: string | null, grupoCuentas: GrupoCuentas) => void;
   actualizarNodo: (id: string, datos: Partial<Nodo>) => void;
   eliminarNodo: (id: string) => void;
   moverNodo: (id: string, nuevoParentId: string | null, indice: number) => void;
@@ -60,6 +71,10 @@ export interface AppState {
   agregarCuenta: (cuenta: CuentaContable) => void;
   actualizarCuenta: (id: string, cuenta: CuentaContable) => void;
   eliminarCuenta: (id: string) => void;
+  // Acciones de Grupos de Cuentas
+  agregarGrupoCuentas: (grupo: GrupoCuentas) => void;
+  actualizarGrupoCuentas: (id: string, grupo: GrupoCuentas) => void;
+  eliminarGrupoCuentas: (id: string) => void;
   // Acciones de Centros de Costo
   agregarCentroCosto: (centro: CentroCosto) => void;
   actualizarCentroCosto: (id: string, centro: CentroCosto) => void;

@@ -16,7 +16,7 @@ import {
 import { Button } from './ui/button';
 import { TreeNode } from './TreeNode';
 import { useAppStore } from '../store';
-import { Plus, Download, Check, X, ChevronDown, ChevronRight, Upload, Minimize2, Maximize2 } from 'lucide-react';
+import { Plus, Download, Check, X, ChevronDown, ChevronRight, Upload, Minimize2, Maximize2, Search, MapPin, ArrowUp, ArrowDown, ChevronUp } from 'lucide-react';
 import { exportarAExcel, exportarAExcelDesnormalizado, importFromExcel } from '../services/excel';
 import { Label } from './ui/label';
 import { Card } from './ui/card';
@@ -33,7 +33,8 @@ import {
 import { Checkbox } from "./ui/checkbox";
 import { AddCuentaDialog } from './AddCuentaDialog';
 import { SelectCuentaDialog } from './SelectCuentaDialog';
-import { Formato, Nodo, CuentaContable } from '../types';
+import { SelectGrupoDialog } from './SelectGrupoDialog';
+import { Formato, Nodo, CuentaContable, GrupoCuentas } from '../types';
 import { Alert } from './ui/alert';
 
 export const TreeEditor: React.FC = () => {
@@ -41,12 +42,14 @@ export const TreeEditor: React.FC = () => {
     formatos,
     formatoActual,
     agregarNodo,
+    agregarNodoGrupoCuentas,
     moverNodo,
     centrosCosto,
     departamentos,
     agregarFormato,
     actualizarFormatoDefaults,
-    cuentas
+    cuentas,
+    gruposCuentas
   } = useAppStore();
 
   const [centrosCostoDefault, setCentrosCostoDefault] = useState<string[]>([]);
@@ -59,6 +62,7 @@ export const TreeEditor: React.FC = () => {
   const [searchTermDepartamentos, setSearchTermDepartamentos] = useState<string>('');
   const [isAddCuentaDialogOpen, setIsAddCuentaDialogOpen] = useState(false);
   const [showCuentaSelector, setShowCuentaSelector] = useState(false);
+  const [showGrupoSelector, setShowGrupoSelector] = useState(false);
   const [centrosCostoExpandido, setCentrosCostoExpandido] = useState(false);
   const [departamentosExpandido, setDepartamentosExpandido] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -70,6 +74,13 @@ export const TreeEditor: React.FC = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [allExpanded, setAllExpanded] = useState(true);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<Array<{nodeId: string, path: string[], cuenta: CuentaContable}>>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const [currentResultIndex, setCurrentResultIndex] = useState(0);
+  const [isSearchFixed, setIsSearchFixed] = useState(false);
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
 
   const formato = formatos.find(f => f.id === formatoActual);
 
@@ -80,12 +91,152 @@ export const TreeEditor: React.FC = () => {
     }
   }, [formato]);
 
+  // Efecto para manejar el scroll y fijar la sección de búsqueda
+  useEffect(() => {
+    const handleScrollForButtons = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      setShowScrollToTop(scrollTop > 300);
+      
+      const searchSection = document.getElementById('search-section');
+      if (searchSection) {
+        const rect = searchSection.getBoundingClientRect();
+        // Solo mostrar fixed si hay término de búsqueda activo
+        setIsSearchFixed(rect.top <= 0 && searchTerm.trim() !== '');
+      }
+    };
+
+    window.addEventListener('scroll', handleScrollForButtons);
+    return () => window.removeEventListener('scroll', handleScrollForButtons);
+  }, [searchTerm]);
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Función recursiva para buscar cuentas en la estructura del árbol
+  const searchAccountsInTree = (nodes: Nodo[], searchTerm: string, currentPath: string[] = []): Array<{nodeId: string, path: string[], cuenta: CuentaContable}> => {
+    const results: Array<{nodeId: string, path: string[], cuenta: CuentaContable}> = [];
+    
+    nodes.forEach(node => {
+      const nodePath = [...currentPath, node.nombre];
+      
+      // Buscar en nodos tipo 'cuenta' o 'medida' que tengan una cuenta asociada
+      if ((node.tipo === 'cuenta' || node.tipo === 'medida') && node.cuenta) {
+        const matchesCodigo = node.cuenta.codigo.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesNombre = node.cuenta.nombre.toLowerCase().includes(searchTerm.toLowerCase());
+        
+        if (matchesCodigo || matchesNombre) {
+          results.push({
+            nodeId: node.id,
+            path: nodePath,
+            cuenta: node.cuenta
+          });
+        }
+      }
+      
+      // Buscar recursivamente en los hijos
+      if (node.hijos.length > 0) {
+        const childResults = searchAccountsInTree(node.hijos, searchTerm, nodePath);
+        results.push(...childResults);
+      }
+    });
+    
+    return results;
+  };
+
+  // Función para realizar la búsqueda
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
+    
+    if (!term.trim() || !formato) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      setHighlightedNodeId(null);
+      setCurrentResultIndex(0);
+      return;
+    }
+    
+    const results = searchAccountsInTree(formato.estructura, term.trim());
+    setSearchResults(results);
+    setShowSearchResults(results.length > 0);
+    setCurrentResultIndex(0);
+    
+    // Si hay resultados, resaltar el primero
+    if (results.length > 0) {
+      setHighlightedNodeId(results[0].nodeId);
+    } else {
+      setHighlightedNodeId(null);
+    }
+  };
+
+  // Función para navegar a un resultado específico
+  const navigateToResult = (nodeId: string) => {
+    const resultIndex = searchResults.findIndex(result => result.nodeId === nodeId);
+    if (resultIndex !== -1) {
+      setCurrentResultIndex(resultIndex);
+    }
+    setHighlightedNodeId(nodeId);
+    setAllExpanded(true); // Expandir todo para mostrar el nodo
+    
+    // Scroll al nodo después de un pequeño delay para permitir la expansión
+    setTimeout(() => {
+      const element = document.getElementById(`node-${nodeId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  };
+
+  // Función para navegar al siguiente resultado
+  const navigateToNext = () => {
+    if (searchResults.length === 0) return;
+    const nextIndex = (currentResultIndex + 1) % searchResults.length;
+    setCurrentResultIndex(nextIndex);
+    const nextResult = searchResults[nextIndex];
+    setHighlightedNodeId(nextResult.nodeId);
+    setAllExpanded(true);
+    
+    setTimeout(() => {
+      const element = document.getElementById(`node-${nextResult.nodeId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  };
+
+  // Función para navegar al resultado anterior
+  const navigateToPrevious = () => {
+    if (searchResults.length === 0) return;
+    const prevIndex = currentResultIndex === 0 ? searchResults.length - 1 : currentResultIndex - 1;
+    setCurrentResultIndex(prevIndex);
+    const prevResult = searchResults[prevIndex];
+    setHighlightedNodeId(prevResult.nodeId);
+    setAllExpanded(true);
+    
+    setTimeout(() => {
+      const element = document.getElementById(`node-${prevResult.nodeId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  };
+
+  // Función para verificar si un nodo debe estar resaltado
+  const shouldHighlightNode = (nodeId: string) => {
+    if (!searchTerm.trim()) return false;
+    return searchResults.some(result => result.nodeId === nodeId);
+  };
+
+  // Función para scroll hacia arriba
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
 
   // Función recursiva para encontrar el parentId y el índice de destino
   function findParentAndIndex(nodes: Nodo[], targetId: string, parentId: string | null = null): { parentId: string | null, index: number } | null {
@@ -164,6 +315,12 @@ export const TreeEditor: React.FC = () => {
     });
   };
 
+  const handleAddGrupoCuentas = (grupos: GrupoCuentas[]) => {
+    grupos.forEach(grupo => {
+      agregarNodoGrupoCuentas(null, grupo);
+    });
+  };
+
   // Función recursiva para recolectar cuentas sin centros de costo
   function getCuentasSinAsignaciones(nodos: Nodo[], tipo: 'centros' | 'departamentos'): string[] {
     let result: string[] = [];
@@ -218,6 +375,15 @@ export const TreeEditor: React.FC = () => {
           >
             <Plus className="w-4 h-4 mr-2" />
             Agregar Cuenta
+          </Button>
+          <Button
+            onClick={() => setShowGrupoSelector(true)}
+            variant="outline"
+            size="sm"
+            className="bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-700"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Agregar Grupo
           </Button>
           <Button
             onClick={() => agregarNodo(null, 'medida', undefined, centrosCostoDefault, departamentosDefault)}
@@ -350,228 +516,8 @@ export const TreeEditor: React.FC = () => {
         </div>
       </div>
       
-      {/* 3. Centros de costo y Departamentos por defecto */}
+      {/* 3. Departamentos y Centros de costo por defecto */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <Card className="p-4">
-        <div className="space-y-2">
-          <Label className="text-lg font-semibold">Centros de Costo por Defecto</Label>
-          <div>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="w-full justify-between">
-                  {centrosCostoDefault.length > 0
-                    ? `${centrosCostoDefault.length} centros seleccionados` : "Seleccionar centros de costo"}
-                  <Plus className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Seleccionar Centros de Costo</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-3">
-                  <div className="flex gap-2 flex-wrap">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const centrosFiltrados = centrosCosto.filter(c => {
-                          if (!c.idNetsuite) return false;
-                          const matchesType = !filtroTipoCentros || c.tipo === filtroTipoCentros;
-                          const matchesSearch = !searchTermCentros || 
-                            c.nombre.toLowerCase().includes(searchTermCentros.toLowerCase()) ||
-                            c.tipo.toLowerCase().includes(searchTermCentros.toLowerCase());
-                          return matchesType && matchesSearch;
-                        });
-                        const centrosAgregar = centrosFiltrados.map(c => c.idNetsuite as string);
-                        const nuevosSeleccionados = new Set([...centrosCostoDefault, ...centrosAgregar]);
-                        const newDefaults = Array.from(nuevosSeleccionados);
-                        setCentrosCostoDefault(newDefaults);
-                        
-                        // Actualizar el formato con los nuevos valores por defecto
-                        if (formato) {
-                          actualizarFormatoDefaults(formato.id, newDefaults, undefined);
-                        }
-                      }}
-                    >
-                      Seleccionar todo
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setCentrosCostoDefault([]);
-                        
-                        // Actualizar el formato con los nuevos valores por defecto
-                        if (formato) {
-                          actualizarFormatoDefaults(formato.id, [], undefined);
-                        }
-                      }}
-                    >
-                      Quitar todo
-                    </Button>
-                  </div>
-                  
-                  {/* Botones para seleccionar por tipo */}
-                  {(() => {
-                    const centrosFiltrados = centrosCosto.filter(c => {
-                      if (!c.idNetsuite) return false;
-                      const matchesSearch = !searchTermCentros || 
-                        c.nombre.toLowerCase().includes(searchTermCentros.toLowerCase()) ||
-                        c.tipo.toLowerCase().includes(searchTermCentros.toLowerCase());
-                      return matchesSearch;
-                    });
-                    const tiposUnicos = Array.from(new Set(centrosFiltrados.map(c => c.tipo))).sort();
-                    
-                    if (tiposUnicos.length > 1) {
-                      return (
-                        <div className="mb-2">
-                          <div className="text-xs text-gray-600 mb-1">Seleccionar por tipo:</div>
-                          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-                            {tiposUnicos.map(tipo => (
-                              <Button
-                                key={tipo}
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                className="text-xs px-2 py-1 h-6 flex-shrink-0 whitespace-nowrap"
-                                onClick={() => {
-                                  const centrosDelTipo = centrosFiltrados
-                                    .filter(c => c.tipo === tipo && c.idNetsuite)
-                                    .map(c => c.idNetsuite as string);
-                                  setCentrosCostoDefault(prev => {
-                                    const nuevosSeleccionados = new Set([...prev, ...centrosDelTipo]);
-                                    const newDefaults = Array.from(nuevosSeleccionados);
-                                    
-                                    // Actualizar el formato con los nuevos valores por defecto
-                                    if (formato) {
-                                      actualizarFormatoDefaults(formato.id, newDefaults, undefined);
-                                    }
-                                    
-                                    return newDefaults;
-                                  });
-                                }}
-                              >
-                                {tipo}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-                  <div className="space-y-2">
-                    <Label htmlFor="search-centros">Buscar:</Label>
-                    <Input
-                      id="search-centros"
-                      placeholder="Buscar por nombre o tipo..."
-                      value={searchTermCentros}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTermCentros(e.target.value)}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-                <div className="grid gap-4 py-4 max-h-[60vh] overflow-auto">
-                  {centrosCosto
-                    .filter(centro => {
-                      const matchesType = !filtroTipoCentros || centro.tipo === filtroTipoCentros;
-                      const matchesSearch = !searchTermCentros || 
-                        centro.nombre.toLowerCase().includes(searchTermCentros.toLowerCase()) ||
-                        centro.tipo.toLowerCase().includes(searchTermCentros.toLowerCase());
-                      return matchesType && matchesSearch;
-                    })
-                    .map((centro) => (
-                    <div key={centro.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={centro.id}
-                        checked={centro.idNetsuite ? centrosCostoDefault.includes(centro.idNetsuite) : false}
-                        onCheckedChange={(checked) => centro.idNetsuite && handleCentroCostoChange(centro.idNetsuite, checked as boolean)}
-                      />
-                      <label
-                        htmlFor={centro.id}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                      >
-                        {`${centro.nombre} (${centro.tipo})`}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-                <DialogFooter>
-                  <Button onClick={() => setDialogOpen(false)}>
-                    Aceptar
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <div className="mt-2">
-              <div className="mb-2 flex items-center">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="p-1 h-6 w-6 mr-2"
-                  onClick={() => setCentrosCostoExpandido((v) => !v)}
-                  aria-label={centrosCostoExpandido ? 'Colapsar' : 'Expandir'}
-                >
-                  {centrosCostoExpandido ? <ChevronDown /> : <ChevronRight />}
-                </Button>
-                <span className="text-sm text-gray-600 align-middle">
-                  {centrosCostoDefault.length} centros seleccionados
-                </span>
-                {!centrosCostoExpandido && (
-                  <span
-                    className="ml-2 text-xs text-gray-500 align-middle max-w-[350px] truncate inline-block align-bottom"
-                    title={centrosCostoDefault.length > 0 ? centrosCostoDefault.map(id => {
-                      const centro = centrosCosto.find(c => c.idNetsuite === id);
-                      return centro ? `${centro.nombre} (${centro.tipo})` : '';
-                    }).filter(Boolean).join(', ') : ''}
-                  >
-                    {centrosCostoDefault.length > 0 &&
-                      `(${centrosCostoDefault.map(id => {
-                        const centro = centrosCosto.find(c => c.idNetsuite === id);
-                        return centro ? `${centro.nombre} (${centro.tipo})` : '';
-                      }).filter(Boolean).join(', ')})`}
-                  </span>
-                )}
-              </div>
-              {centrosCostoExpandido && (
-                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto border rounded p-2 bg-gray-50">
-                  {centrosCostoDefault.map((id) => {
-                    const centro = centrosCosto.find((c) => c.idNetsuite === id);
-                    if (!centro) return null;
-                    return (
-                      <span
-                        key={id}
-                        className="inline-flex items-center bg-blue-100 text-blue-800 rounded-full px-3 py-1 text-xs font-medium"
-                      >
-                        {centro.nombre} ({centro.tipo})
-                        <button
-                          type="button"
-                          className="ml-2 text-blue-800 hover:text-red-600 focus:outline-none"
-                          onClick={() => {
-                            const newDefaults = centrosCostoDefault.filter((cid) => cid !== id);
-                            setCentrosCostoDefault(newDefaults);
-                            
-                            // Actualizar el formato con los nuevos valores por defecto
-                            if (formato) {
-                              actualizarFormatoDefaults(formato.id, newDefaults, undefined);
-                            }
-                          }}
-                          aria-label="Eliminar centro de costo"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </Card>
-
       <Card className="p-4">
         <div className="space-y-2">
           <Label className="text-lg font-semibold">Departamentos por Defecto</Label>
@@ -725,7 +671,7 @@ export const TreeEditor: React.FC = () => {
                         htmlFor={`depto-${depto.id}`}
                         className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                       >
-                        {`${depto.nombre} (${depto.tipo})`}
+                        {depto.nombre_completo || depto.nombre} {depto.tipo && `(${depto.tipo})`}
                       </label>
                     </div>
                   ))}
@@ -751,18 +697,33 @@ export const TreeEditor: React.FC = () => {
                 <span className="text-sm text-gray-600 align-middle">
                   {departamentosDefault.length} departamentos seleccionados
                 </span>
+                {!departamentosExpandido && (
+                  <span
+                    className="ml-2 text-xs text-gray-500 align-middle max-w-[350px] truncate inline-block align-bottom"
+                    title={departamentosDefault.length > 0 ? departamentosDefault.map(id => {
+                      const depto = departamentos.find(d => d.id.toString() === id);
+                      return depto ? `${depto.nombre_completo || depto.nombre} ${depto.tipo ? `(${depto.tipo})` : ''}` : '';
+                    }).filter(Boolean).join(', ') : ''}
+                  >
+                    {departamentosDefault.length > 0 &&
+                      `(${departamentosDefault.map(id => {
+                        const depto = departamentos.find(d => d.id.toString() === id);
+                        return depto ? `${depto.nombre_completo || depto.nombre} ${depto.tipo ? `(${depto.tipo})` : ''}` : '';
+                      }).filter(Boolean).join(', ')})`}
+                  </span>
+                )}
               </div>
               {departamentosExpandido && (
                 <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto border rounded p-2 bg-gray-50">
                   {departamentosDefault.map((id) => {
-                    const depto = departamentos.find((d) => String(d.id) === id);
+                    const depto = departamentos.find((d) => d.id.toString() === id);
                     if (!depto) return null;
                     return (
                       <span
                         key={id}
                         className="inline-flex items-center bg-green-100 text-green-800 rounded-full px-3 py-1 text-xs font-medium"
                       >
-                        {depto.nombre}
+                        {depto.nombre_completo || depto.nombre} {depto.tipo && `(${depto.tipo})`}
                         <button
                           type="button"
                           className="ml-2 text-green-800 hover:text-red-600 focus:outline-none"
@@ -788,8 +749,393 @@ export const TreeEditor: React.FC = () => {
           </div>
         </div>
       </Card>
+
+      <Card className="p-4">
+        <div className="space-y-2">
+          <Label className="text-lg font-semibold">Centros de Costo por Defecto</Label>
+          <div>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="w-full justify-between">
+                  {centrosCostoDefault.length > 0
+                    ? `${centrosCostoDefault.length} centros seleccionados` : "Seleccionar centros de costo"}
+                  <Plus className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Seleccionar Centros de Costo</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const centrosFiltrados = centrosCosto.filter(c => {
+                          if (!c.idNetsuite) return false;
+                          const matchesType = !filtroTipoCentros || c.tipo === filtroTipoCentros;
+                          const matchesSearch = !searchTermCentros || 
+                            c.nombre.toLowerCase().includes(searchTermCentros.toLowerCase()) ||
+                            c.tipo.toLowerCase().includes(searchTermCentros.toLowerCase());
+                          return matchesType && matchesSearch;
+                        });
+                        const centrosAgregar = centrosFiltrados.map(c => c.idNetsuite as string);
+                        const nuevosSeleccionados = new Set([...centrosCostoDefault, ...centrosAgregar]);
+                        const newDefaults = Array.from(nuevosSeleccionados);
+                        setCentrosCostoDefault(newDefaults);
+                        
+                        // Actualizar el formato con los nuevos valores por defecto
+                        if (formato) {
+                          actualizarFormatoDefaults(formato.id, newDefaults, undefined);
+                        }
+                      }}
+                    >
+                      Seleccionar todo
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setCentrosCostoDefault([]);
+                        
+                        // Actualizar el formato con los nuevos valores por defecto
+                        if (formato) {
+                          actualizarFormatoDefaults(formato.id, [], undefined);
+                        }
+                      }}
+                    >
+                      Quitar todo
+                    </Button>
+                  </div>
+                  
+                  {/* Botones para seleccionar por tipo */}
+                  {(() => {
+                    const centrosFiltrados = centrosCosto.filter(c => {
+                      if (!c.idNetsuite) return false;
+                      const matchesSearch = !searchTermCentros || 
+                        c.nombre.toLowerCase().includes(searchTermCentros.toLowerCase()) ||
+                        c.tipo.toLowerCase().includes(searchTermCentros.toLowerCase());
+                      return matchesSearch;
+                    });
+                    const tiposUnicos = Array.from(new Set(centrosFiltrados.map(c => c.tipo).filter(Boolean))).sort();
+                    
+                    if (tiposUnicos.length > 1) {
+                      return (
+                        <div className="mb-2">
+                          <div className="text-xs text-gray-600 mb-1">Seleccionar por tipo:</div>
+                          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                            {tiposUnicos.map(tipo => (
+                              <Button
+                                key={tipo}
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                className="text-xs px-2 py-1 h-6 flex-shrink-0 whitespace-nowrap"
+                                onClick={() => {
+                                  const centrosDelTipo = centrosFiltrados
+                                    .filter(c => c.tipo === tipo)
+                                    .map(c => c.idNetsuite as string);
+                                  setCentrosCostoDefault(prev => {
+                                    const nuevosSeleccionados = new Set([...prev, ...centrosDelTipo]);
+                                    const newDefaults = Array.from(nuevosSeleccionados);
+                                    
+                                    // Actualizar el formato con los nuevos valores por defecto
+                                    if (formato) {
+                                      actualizarFormatoDefaults(formato.id, newDefaults, undefined);
+                                    }
+                                    
+                                    return newDefaults;
+                                  });
+                                }}
+                              >
+                                {tipo}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                  <div className="space-y-2">
+                    <Label htmlFor="search-centros">Buscar:</Label>
+                    <Input
+                      id="search-centros"
+                      placeholder="Buscar por nombre o tipo..."
+                      value={searchTermCentros}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTermCentros(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-4 py-4 max-h-[60vh] overflow-auto">
+                  {centrosCosto
+                    .filter(centro => {
+                      const matchesType = !filtroTipoCentros || centro.tipo === filtroTipoCentros;
+                      const matchesSearch = !searchTermCentros || 
+                        centro.nombre.toLowerCase().includes(searchTermCentros.toLowerCase()) ||
+                        centro.tipo.toLowerCase().includes(searchTermCentros.toLowerCase());
+                      return matchesType && matchesSearch;
+                    })
+                    .map((centro) => (
+                    <div key={centro.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={centro.id}
+                        checked={centro.idNetsuite ? centrosCostoDefault.includes(centro.idNetsuite) : false}
+                        onCheckedChange={(checked) => centro.idNetsuite && handleCentroCostoChange(centro.idNetsuite, checked as boolean)}
+                      />
+                      <label
+                        htmlFor={centro.id}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      >
+                        {`${centro.nombre} (${centro.tipo})`}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                <DialogFooter>
+                  <Button onClick={() => setDialogOpen(false)}>
+                    Aceptar
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <div className="mt-2">
+              <div className="mb-2 flex items-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="p-1 h-6 w-6 mr-2"
+                  onClick={() => setCentrosCostoExpandido((v) => !v)}
+                  aria-label={centrosCostoExpandido ? 'Colapsar' : 'Expandir'}
+                >
+                  {centrosCostoExpandido ? <ChevronDown /> : <ChevronRight />}
+                </Button>
+                <span className="text-sm text-gray-600 align-middle">
+                  {centrosCostoDefault.length} centros seleccionados
+                </span>
+                {!centrosCostoExpandido && (
+                  <span
+                    className="ml-2 text-xs text-gray-500 align-middle max-w-[350px] truncate inline-block align-bottom"
+                    title={centrosCostoDefault.length > 0 ? centrosCostoDefault.map(id => {
+                      const centro = centrosCosto.find(c => c.idNetsuite === id);
+                      return centro ? `${centro.nombre} (${centro.tipo})` : '';
+                    }).filter(Boolean).join(', ') : ''}
+                  >
+                    {centrosCostoDefault.length > 0 &&
+                      `(${centrosCostoDefault.map(id => {
+                        const centro = centrosCosto.find(c => c.idNetsuite === id);
+                        return centro ? `${centro.nombre} (${centro.tipo})` : '';
+                      }).filter(Boolean).join(', ')})`}
+                  </span>
+                )}
+              </div>
+              {centrosCostoExpandido && (
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto border rounded p-2 bg-gray-50">
+                  {centrosCostoDefault.map((id) => {
+                    const centro = centrosCosto.find((c) => c.idNetsuite === id);
+                    if (!centro) return null;
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center bg-blue-100 text-blue-800 rounded-full px-3 py-1 text-xs font-medium"
+                      >
+                        {centro.nombre} ({centro.tipo})
+                        <button
+                          type="button"
+                          className="ml-2 text-blue-800 hover:text-red-600 focus:outline-none"
+                          onClick={() => {
+                            const newDefaults = centrosCostoDefault.filter((cid) => cid !== id);
+                            setCentrosCostoDefault(newDefaults);
+                            
+                            // Actualizar el formato con los nuevos valores por defecto
+                            if (formato) {
+                              actualizarFormatoDefaults(formato.id, newDefaults, undefined);
+                            }
+                          }}
+                          aria-label="Eliminar centro de costo"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
       </div>
 
+      {/* 5. Búsqueda de cuentas */}
+      <div id="search-section" className="bg-white rounded-lg shadow p-4 mb-4">
+        <div className="space-y-3">
+          <Label className="text-lg font-semibold">Buscar Cuenta</Label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                placeholder="Buscar por código o nombre de cuenta..."
+                value={searchTerm}
+                onChange={(e) => handleSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            {searchResults.length > 1 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={navigateToPrevious}
+                  className="px-3"
+                  title="Resultado anterior"
+                >
+                  <ArrowUp className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={navigateToNext}
+                  className="px-3"
+                  title="Siguiente resultado"
+                >
+                  <ArrowDown className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            {searchTerm && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleSearch('')}
+                className="px-3"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+          
+          {/* Contador de resultados */}
+          {searchResults.length > 0 && (
+            <div className="text-sm text-gray-600">
+              Resultado {currentResultIndex + 1} de {searchResults.length}
+            </div>
+          )}
+          
+          {/* Resultados de búsqueda */}
+          {showSearchResults && (
+            <div className="mt-3">
+              <div className="text-sm text-gray-600 mb-2">
+                {searchResults.length} cuenta{searchResults.length !== 1 ? 's' : ''} encontrada{searchResults.length !== 1 ? 's' : ''}:
+              </div>
+              <div className="space-y-2 max-h-40 overflow-y-auto border rounded p-2 bg-gray-50">
+                {searchResults.map((result, index) => (
+                  <div
+                    key={`${result.nodeId}-${index}`}
+                    className={`flex items-center justify-between p-2 rounded border cursor-pointer transition-colors ${
+                      index === currentResultIndex 
+                        ? 'bg-blue-100 border-blue-300' 
+                        : 'bg-white hover:bg-blue-50'
+                    }`}
+                    onClick={() => navigateToResult(result.nodeId)}
+                  >
+                    <div className="flex-1">
+                      <div className="font-medium text-sm">
+                        {result.cuenta.codigo} - {result.cuenta.nombre}
+                      </div>
+                      <div className="text-xs text-gray-500 flex items-center">
+                        <MapPin className="w-3 h-3 mr-1" />
+                        {result.path.join(' > ')}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 h-6 w-6"
+                    >
+                      <ChevronRight className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {searchTerm && !showSearchResults && (
+            <div className="text-sm text-gray-500 italic">
+              No se encontraron cuentas que coincidan con "{searchTerm}"
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Sección de búsqueda fija - solo cuando hay filtro activo */}
+      {isSearchFixed && searchTerm.trim() !== '' && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow-lg border-b p-4" style={{ maxWidth: "115%", margin: "0 auto" }}>
+          <div className="space-y-3" style={{ maxWidth: "calc(115% - 2rem)", margin: "0 auto" }}>
+            <Label className="text-lg font-semibold">Buscar Cuenta</Label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Buscar por código o nombre de cuenta..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              {searchResults.length > 1 && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={navigateToPrevious}
+                    className="px-3"
+                    title="Resultado anterior"
+                  >
+                    <ArrowUp className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={navigateToNext}
+                    className="px-3"
+                    title="Siguiente resultado"
+                  >
+                    <ArrowDown className="w-4 h-4" />
+                  </Button>
+                </>
+              )}
+              {searchTerm && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSearch('')}
+                  className="px-3"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+            
+            {/* Contador de resultados */}
+            {searchResults.length > 0 && (
+              <div className="text-sm text-gray-600">
+                Resultado {currentResultIndex + 1} de {searchResults.length}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Espaciador cuando la búsqueda está fija */}
+      {isSearchFixed && searchTerm.trim() !== '' && <div className="h-32"></div>}
+
+      {/* 6. Árbol de estructura */}
       <div className="bg-white rounded-lg shadow p-4">
 
         <DndContext
@@ -814,6 +1160,8 @@ export const TreeEditor: React.FC = () => {
                   centrosCostoDefault={centrosCostoDefault}
                   departamentosDefault={departamentosDefault}
                   forceExpanded={allExpanded}
+                  highlightedNodeId={highlightedNodeId}
+                  shouldHighlightNode={shouldHighlightNode}
                 />
               ))}
             </div>
@@ -827,6 +1175,14 @@ export const TreeEditor: React.FC = () => {
         onSelect={handleAddCuenta}
         cuentas={cuentas}
         multiple={true}
+      />
+
+      <SelectGrupoDialog
+        isOpen={showGrupoSelector}
+        onClose={() => setShowGrupoSelector(false)}
+        onSelect={handleAddGrupoCuentas}
+        grupos={gruposCuentas}
+        cuentas={cuentas}
       />
 
       {/* Modal de advertencia por cuentas sin centros de costo */}
@@ -876,6 +1232,17 @@ export const TreeEditor: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Botón flotante para ir arriba */}
+      {showScrollToTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-6 right-6 z-50 bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg transition-all duration-300 hover:scale-110"
+          title="Ir arriba"
+        >
+          <ChevronUp className="w-5 h-5" />
+        </button>
+      )}
     </div>
   );
 }; 

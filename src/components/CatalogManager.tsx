@@ -42,9 +42,9 @@ export const CatalogManager: React.FC = () => {
   });
   const [sortField, setSortField] = useState<SortField>('codigo');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-  const [filterNaturaleza, setFilterNaturaleza] = useState<'gasto' | 'ingreso' | 'todos'>('todos');
+  const [filterNaturaleza, setFilterNaturaleza] = useState<string>('todos');
   const [openCombobox, setOpenCombobox] = useState(false);
-  const [tiposCuenta, setTiposCuenta] = useState<Set<'gasto' | 'ingreso'>>(new Set());
+  const [tiposCuenta, setTiposCuenta] = useState<Set<string>>(new Set());
   const [isAddCuentaDialogOpen, setIsAddCuentaDialogOpen] = useState(false);
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
@@ -65,7 +65,7 @@ export const CatalogManager: React.FC = () => {
 
   // Función para obtener tipos únicos de cuenta existentes
   const actualizarTiposCuenta = () => {
-    const tipos = new Set<'gasto' | 'ingreso'>();
+    const tipos = new Set<string>();
     cuentas.forEach(cuenta => {
       if (cuenta.naturaleza) {
         tipos.add(cuenta.naturaleza);
@@ -188,8 +188,9 @@ export const CatalogManager: React.FC = () => {
           return;
         }
 
-        if (!['gasto', 'ingreso'].includes(tipo.toLowerCase())) {
-          setImportError(`Error en la fila ${i + 1}: El tipo debe ser "gasto" o "ingreso"`);
+        // Validar que el tipo no esté vacío
+        if (!tipo || tipo.trim() === '') {
+          setImportError(`Error en la fila ${i + 1}: El tipo no puede estar vacío`);
           return;
         }
 
@@ -224,7 +225,7 @@ export const CatalogManager: React.FC = () => {
           id: finalId,
           codigo,
           nombre,
-          naturaleza: tipo as 'gasto' | 'ingreso'
+          naturaleza: tipo
         });
 
         codigosNuevos.add(codigo);

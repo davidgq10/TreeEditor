@@ -76,7 +76,7 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
     id: string;
     codigo: string;
     nombre: string;
-    naturaleza: 'gasto' | 'ingreso'
+    naturaleza: string
   }>({
     id: '',
     codigo: '',
@@ -210,7 +210,7 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
 
   const handleAddTipo = (nuevoTipo: string) => {
     setTiposCuenta(new Set([...tiposCuenta, nuevoTipo.toLowerCase()]));
-    setFormData(prev => ({ ...prev, naturaleza: nuevoTipo.toLowerCase() as 'gasto' | 'ingreso' }));
+    setFormData(prev => ({ ...prev, naturaleza: nuevoTipo.toLowerCase() }));
   };
 
   return (
@@ -302,7 +302,7 @@ export const AddCuentaDialog: React.FC<AddCuentaDialogProps> = (props) => {
                 <Select
                   value={formData.naturaleza}
                   onValueChange={(value: string) => {
-                    setFormData(prev => ({ ...prev, naturaleza: value as 'gasto' | 'ingreso' }));
+                    setFormData(prev => ({ ...prev, naturaleza: value }));
                     setFormErrors(prev => ({ ...prev, naturaleza: null }));
                   }}
                 >

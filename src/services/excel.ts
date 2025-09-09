@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { Formato, Nodo, CuentaContable, CentroCosto, Departamento } from '../types';
+import { Formato, Nodo, CuentaContable, CentroCosto, Departamento, GrupoCuentas } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface ExportOptions {
@@ -42,6 +42,7 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
     { header: 'Nombres de departamento seleccionados', key: 'departamentosNombres', width: 40 },
     { header: 'Invertir valor', key: 'invertirValor', width: 15 },
     { header: 'Orden global de linea en informe', key: 'ordenGlobal', width: 15 },
+    { header: 'ID Cuenta Contable', key: 'idCuentaContable', width: 40 },
     { header: 'Numero de Cuenta', key: 'numeroCuenta', width: 20 },
     { header: 'Nombre de Cuenta', key: 'nombreCuenta', width: 30 },
     { header: 'Tipo de Cuenta', key: 'tipoCuenta', width: 20 },
@@ -107,16 +108,19 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
 
       // Llenar datos de cuenta/medida
       if (nodo.tipo === 'cuenta' && nodo.cuenta) {
+        baseRowData['idCuentaContable'] = nodo.cuenta.id || '';
         baseRowData['numeroCuenta'] = nodo.cuenta.codigo || '';
         baseRowData['nombreCuenta'] = nodo.cuenta.nombre || '';
         baseRowData['tipoCuenta'] = nodo.cuenta.naturaleza || '';
         baseRowData['descripcionCompleta'] = `${nodo.cuenta.codigo || ''} ${nodo.cuenta.nombre || ''}`.trim();
       } else if (nodo.tipo === 'medida') {
+        baseRowData['idCuentaContable'] = '';
         baseRowData['numeroCuenta'] = nodo.nombre;
         baseRowData['nombreCuenta'] = nodo.nombre;
         baseRowData['tipoCuenta'] = nodo.nombre;
         baseRowData['descripcionCompleta'] = nodo.nombre;
       } else {
+        baseRowData['idCuentaContable'] = '';
         baseRowData['numeroCuenta'] = '';
         baseRowData['nombreCuenta'] = '';
         baseRowData['tipoCuenta'] = '';
@@ -265,6 +269,7 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
     { header: 'Nombres de departamento seleccionados', key: 'departamentosNombres', width: 40 },
     { header: 'Invertir valor', key: 'invertirValor', width: 15 },
     { header: 'Orden global de linea en informe', key: 'ordenGlobal', width: 15 },
+    { header: 'ID Cuenta Contable', key: 'idCuentaContable', width: 40 },
     { header: 'Numero de Cuenta', key: 'numeroCuenta', width: 20 },
     { header: 'Nombre de Cuenta', key: 'nombreCuenta', width: 30 },
     { header: 'Tipo de Cuenta', key: 'tipoCuenta', width: 20 },
@@ -359,6 +364,7 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
 
       // Si es cuenta, llenar las columnas extra con datos de cuenta
       if (nodo.tipo === 'cuenta' && nodo.cuenta) {
+        rowData['idCuentaContable'] = nodo.cuenta.id || '';
         rowData['numeroCuenta'] = nodo.cuenta.codigo || '';
         rowData['nombreCuenta'] = nodo.cuenta.nombre || '';
         rowData['tipoCuenta'] = nodo.cuenta.naturaleza || '';
@@ -366,6 +372,7 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
       }
       // Si es medida, llenar las columnas extra con el nombre de la medida
       else if (nodo.tipo === 'medida') {
+        rowData['idCuentaContable'] = '';
         rowData['numeroCuenta'] = nodo.nombre;
         rowData['nombreCuenta'] = nodo.nombre;
         rowData['tipoCuenta'] = nodo.nombre;
@@ -373,6 +380,7 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
       }
       // Otros casos
       else {
+        rowData['idCuentaContable'] = '';
         rowData['numeroCuenta'] = '';
         rowData['nombreCuenta'] = '';
         rowData['tipoCuenta'] = '';
@@ -494,6 +502,7 @@ export async function importFromExcel({ file, centrosCostoList, departamentosLis
     const nivel9 = columnIndices['Nivel 9'] ? row.getCell(columnIndices['Nivel 9']).value?.toString()?.trim() : null;
     const nivel10 = columnIndices['Nivel 10'] ? row.getCell(columnIndices['Nivel 10']).value?.toString()?.trim() : null;
 
+    const idCuentaContable = columnIndices['ID Cuenta Contable'] ? row.getCell(columnIndices['ID Cuenta Contable']).value?.toString()?.trim() : null;
     const numeroCuenta = row.getCell(columnIndices['Numero de Cuenta']).value?.toString()?.trim();
     const nombreCuenta = row.getCell(columnIndices['Nombre de Cuenta']).value?.toString()?.trim();
     const tipoCuenta = row.getCell(columnIndices['Tipo de Cuenta']).value?.toString()?.trim();
@@ -590,16 +599,16 @@ export async function importFromExcel({ file, centrosCostoList, departamentosLis
     if ((tipoNodo === 'cuenta' && numeroCuenta && nombreCuenta) || tipoNodo === 'medida') {
       // Solo crear objeto CuentaContable para nodos tipo cuenta
       const cuenta = tipoNodo === 'cuenta' ? {
-        id: uuidv4(),
+        id: idCuentaContable || uuidv4(),
         codigo: numeroCuenta || '',
         nombre: nombreCuenta || '',
-        naturaleza: (tipoCuenta || 'gasto').toLowerCase() as 'gasto' | 'ingreso'
+        naturaleza: tipoCuenta || 'gasto'
       } : undefined;
       
       const node: Nodo = {
         id: uuidv4(),
         tipo: tipoNodo,
-        nombre: tipoNodo === 'cuenta' ? (nombreCuenta || '') : (nivel5 || nivel4 || nivel3 || nivel2 || nivel1 || 'Nueva Medida'),
+        nombre: tipoNodo === 'cuenta' ? (nombreCuenta || '') : (niveles[currentLevel] || 'Nueva Medida'),
         cuenta: tipoNodo === 'cuenta' ? cuenta : undefined,
         cuentaId: tipoNodo === 'cuenta' ? cuenta?.id : undefined,
         hijos: [],
@@ -629,7 +638,7 @@ export async function importFromExcel({ file, centrosCostoList, departamentosLis
     } 
     // Si es un grupo
     else if (nivel1 && tipoNodo === 'grupo') {
-      const nombreGrupo = nivel5 || nivel4 || nivel3 || nivel2 || nivel1;
+      const nombreGrupo = niveles[currentLevel] || nivel1;
       const node: Nodo = {
         id: uuidv4(),
         tipo: 'grupo',
@@ -688,4 +697,258 @@ export async function importFromExcel({ file, centrosCostoList, departamentosLis
   formato.departamentosDefault = Array.from(departamentosDefault);
   
   return { formato };
+}
+
+// Interfaces para exportar/importar grupos de cuentas
+interface ExportGruposOptions {
+  gruposCuentas: GrupoCuentas[];
+  cuentasList: CuentaContable[];
+}
+
+interface ImportGruposOptions {
+  file: File;
+  cuentasList: CuentaContable[];
+}
+
+export async function exportarGruposCuentasAExcel({ gruposCuentas, cuentasList }: ExportGruposOptions): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('GruposCuentas');
+
+  // Configurar columnas
+  worksheet.columns = [
+    { header: 'ID Grupo', key: 'idGrupo', width: 40 },
+    { header: 'Nombre Grupo', key: 'nombreGrupo', width: 30 },
+    { header: 'Descripción Grupo', key: 'descripcionGrupo', width: 50 },
+    { header: 'Fecha Creación', key: 'fechaCreacion', width: 20 },
+    { header: 'Fecha Modificación', key: 'fechaModificacion', width: 20 },
+    { header: 'ID Cuenta', key: 'idCuenta', width: 40 },
+    { header: 'Código Cuenta', key: 'codigoCuenta', width: 20 },
+    { header: 'Nombre Cuenta', key: 'nombreCuenta', width: 30 },
+    { header: 'Naturaleza Cuenta', key: 'naturalezaCuenta', width: 20 }
+  ];
+
+  // Estilo para encabezados
+  worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  worksheet.getRow(1).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF2563EB' }
+  };
+
+  // Función auxiliar para formatear fechas de forma segura
+  const formatearFecha = (fecha: Date | string | undefined): string => {
+    if (!fecha) return new Date().toISOString().split('T')[0];
+    
+    try {
+      const fechaObj = fecha instanceof Date ? fecha : new Date(fecha);
+      if (isNaN(fechaObj.getTime())) {
+        return new Date().toISOString().split('T')[0];
+      }
+      return fechaObj.toISOString().split('T')[0];
+    } catch (error) {
+      console.warn('Error al formatear fecha:', error);
+      return new Date().toISOString().split('T')[0];
+    }
+  };
+
+  // Agregar datos
+  gruposCuentas.forEach(grupo => {
+    const cuentasDelGrupo = grupo.cuentas
+      .map(cuentaId => cuentasList.find(c => c.id === cuentaId))
+      .filter((cuenta): cuenta is CuentaContable => cuenta !== undefined);
+
+    const fechaCreacionFormatted = formatearFecha(grupo.fechaCreacion);
+    const fechaModificacionFormatted = formatearFecha(grupo.fechaModificacion);
+
+    if (cuentasDelGrupo.length === 0) {
+      // Si el grupo no tiene cuentas válidas, agregar una fila solo con datos del grupo
+      worksheet.addRow({
+        idGrupo: grupo.id || '',
+        nombreGrupo: grupo.nombre || '',
+        descripcionGrupo: grupo.descripcion || '',
+        fechaCreacion: fechaCreacionFormatted,
+        fechaModificacion: fechaModificacionFormatted,
+        idCuenta: '',
+        codigoCuenta: '',
+        nombreCuenta: '',
+        naturalezaCuenta: ''
+      });
+    } else {
+      // Agregar una fila por cada cuenta en el grupo
+      cuentasDelGrupo.forEach(cuenta => {
+        worksheet.addRow({
+          idGrupo: grupo.id || '',
+          nombreGrupo: grupo.nombre || '',
+          descripcionGrupo: grupo.descripcion || '',
+          fechaCreacion: fechaCreacionFormatted,
+          fechaModificacion: fechaModificacionFormatted,
+          idCuenta: cuenta.id || '',
+          codigoCuenta: cuenta.codigo || '',
+          nombreCuenta: cuenta.nombre || '',
+          naturalezaCuenta: cuenta.naturaleza || ''
+        });
+      });
+    }
+  });
+
+  // Agregar bordes y estilo a todas las celdas con datos
+  worksheet.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+      
+      // Estilo para datos (fondo blanco, letra negra)
+      if (rowNumber > 1) {
+        cell.font = { color: { argb: 'FF000000' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFFFFF' }
+        };
+      }
+    });
+  });
+
+  return workbook.xlsx.writeBuffer() as Promise<Buffer>;
+}
+
+export async function importarGruposCuentasDesdeExcel({ file, cuentasList }: ImportGruposOptions): Promise<{ gruposCuentas: GrupoCuentas[] }> {
+  const arrayBuffer = await file.arrayBuffer();
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(arrayBuffer);
+  
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    throw new Error('El archivo Excel no contiene hojas de cálculo');
+  }
+
+  // Obtener índices de columnas
+  const headerRow = worksheet.getRow(1);
+  const columnIndices: { [key: string]: number } = {};
+  
+  headerRow.eachCell((cell, colNumber) => {
+    columnIndices[String(cell.value).trim()] = colNumber;
+  });
+
+  // Validar columnas requeridas
+  const requiredColumns = [
+    'ID Grupo',
+    'Nombre Grupo',
+    'Fecha Creación',
+    'Fecha Modificación'
+  ];
+
+  for (const col of requiredColumns) {
+    if (!(col in columnIndices)) {
+      throw new Error(`Columna requerida no encontrada: ${col}`);
+    }
+  }
+
+  // Mapa para agrupar cuentas por grupo
+  const gruposMap = new Map<string, {
+    id: string;
+    nombre: string;
+    descripcion: string;
+    fechaCreacion: Date;
+    fechaModificacion: Date;
+    cuentas: string[];
+  }>();
+
+  // Procesar filas (empezando desde la fila 2 que contiene datos)
+  for (let i = 2; i <= worksheet.rowCount; i++) {
+    const row = worksheet.getRow(i);
+    
+    // Verificar si la fila está vacía
+    const isEmptyRow = !row.hasValues;
+    if (isEmptyRow) {
+      continue;
+    }
+    
+    // Obtener valores de las celdas
+    const idGrupo = row.getCell(columnIndices['ID Grupo']).value?.toString()?.trim();
+    const nombreGrupo = row.getCell(columnIndices['Nombre Grupo']).value?.toString()?.trim();
+    const descripcionGrupo = columnIndices['Descripción Grupo'] 
+      ? row.getCell(columnIndices['Descripción Grupo']).value?.toString()?.trim() || ''
+      : '';
+    const fechaCreacionStr = row.getCell(columnIndices['Fecha Creación']).value?.toString()?.trim();
+    const fechaModificacionStr = row.getCell(columnIndices['Fecha Modificación']).value?.toString()?.trim();
+    const idCuenta = columnIndices['ID Cuenta'] 
+      ? row.getCell(columnIndices['ID Cuenta']).value?.toString()?.trim()
+      : '';
+
+    console.log(`Fila ${i}: idGrupo=${idGrupo}, nombreGrupo=${nombreGrupo}, idCuenta=${idCuenta}`);
+
+    // Validar datos requeridos del grupo
+    if (!idGrupo || !nombreGrupo) {
+      console.warn(`Fila ${i}: Faltan datos requeridos del grupo (ID o nombre), saltando fila`);
+      continue;
+    }
+
+    // Parsear fechas
+    let fechaCreacion: Date;
+    let fechaModificacion: Date;
+    
+    try {
+      fechaCreacion = fechaCreacionStr ? new Date(fechaCreacionStr) : new Date();
+      fechaModificacion = fechaModificacionStr ? new Date(fechaModificacionStr) : new Date();
+      
+      if (isNaN(fechaCreacion.getTime()) || isNaN(fechaModificacion.getTime())) {
+        throw new Error('Fecha inválida');
+      }
+    } catch (error) {
+      console.warn(`Fila ${i}: Error al parsear fechas, usando fechas por defecto`);
+      fechaCreacion = new Date();
+      fechaModificacion = new Date();
+    }
+
+    // Verificar si el grupo ya existe en el mapa
+    if (!gruposMap.has(idGrupo)) {
+      gruposMap.set(idGrupo, {
+        id: uuidv4(), // Generar nuevo ID único para evitar conflictos
+        nombre: nombreGrupo,
+        descripcion: descripcionGrupo,
+        fechaCreacion,
+        fechaModificacion,
+        cuentas: []
+      });
+    }
+
+    // Agregar cuenta al grupo si existe y es válida
+    if (idCuenta) {
+      const cuentaExiste = cuentasList.some(c => c.id === idCuenta);
+      if (cuentaExiste) {
+        const grupo = gruposMap.get(idGrupo)!;
+        if (!grupo.cuentas.includes(idCuenta)) {
+          grupo.cuentas.push(idCuenta);
+        }
+      } else {
+        console.warn(`Fila ${i}: Cuenta con ID ${idCuenta} no encontrada en el catálogo, saltando cuenta`);
+      }
+    }
+  }
+
+  // Convertir el mapa a array de grupos
+  const gruposCuentas: GrupoCuentas[] = Array.from(gruposMap.values()).map(grupo => ({
+    id: grupo.id,
+    nombre: grupo.nombre,
+    descripcion: grupo.descripcion,
+    cuentas: grupo.cuentas,
+    fechaCreacion: grupo.fechaCreacion,
+    fechaModificacion: grupo.fechaModificacion
+  }));
+
+  console.log(`Grupos procesados: ${gruposCuentas.length}`);
+  gruposCuentas.forEach(grupo => {
+    console.log(`Grupo: ${grupo.nombre}, Cuentas: ${grupo.cuentas.length}`);
+  });
+
+  if (gruposCuentas.length === 0) {
+    throw new Error('No se encontraron grupos válidos para importar');
+  }
+
+  return { gruposCuentas };
 }

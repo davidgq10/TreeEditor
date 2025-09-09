@@ -5,8 +5,9 @@ import { ChevronRight, ChevronDown, GripVertical, Trash2, Plus, X, Folder, Calcu
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useAppStore } from '../store';
-import { Nodo, CuentaContable, Departamento } from '../types/index';
+import { Nodo, CuentaContable, Departamento, GrupoCuentas } from '../types/index';
 import { SelectCuentaDialog } from './SelectCuentaDialog';
+import { SelectGrupoDialog } from './SelectGrupoDialog';
 import { DeleteConfirmationDialog } from './DeleteConfirmationDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger } from './ui/select';
 import { Label } from './ui/label';
@@ -22,6 +23,8 @@ interface TreeNodeProps {
   centrosCostoDefault: string[];
   departamentosDefault: string[];
   forceExpanded?: boolean;
+  highlightedNodeId?: string | null;
+  shouldHighlightNode?: (nodeId: string) => boolean;
 }
 
 // Paleta de colores suaves para niveles
@@ -46,7 +49,7 @@ const levelBorderColors = [
   'border-l-[6px] border-violet-500', // nivel 6 - violeta
 ];
 
-export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDefault, departamentosDefault, forceExpanded }) => {
+export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDefault, departamentosDefault, forceExpanded, highlightedNodeId, shouldHighlightNode }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [configExpanded, setConfigExpanded] = useState(false);
   
@@ -59,6 +62,7 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
   }, [forceExpanded]);
   const [isEditing, setIsEditing] = useState(false);
   const [showCuentaDialog, setShowCuentaDialog] = useState(false);
+  const [showGrupoDialog, setShowGrupoDialog] = useState(false);
   const [showCentroCostoDialog, setShowCentroCostoDialog] = useState(false);
   const [showDepartamentoDialog, setShowDepartamentoDialog] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
@@ -77,7 +81,7 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
   const [centrosCostoExpandido, setCentrosCostoExpandido] = useState(false);
   const [departamentosExpandido, setDepartamentosExpandido] = useState(false);
 
-  const { actualizarNodo, eliminarNodo, agregarNodo, cuentas, centrosCosto, departamentos } = useAppStore();
+  const { actualizarNodo, eliminarNodo, agregarNodo, agregarNodoGrupoCuentas, cuentas, centrosCosto, departamentos, gruposCuentas } = useAppStore();
 
   const {
     attributes,
@@ -118,6 +122,13 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
       agregarNodo(node.id, 'cuenta', cuenta, centrosCostoDefault, departamentosDefault);
     });
     setShowCuentaDialog(false);
+  };
+
+  const handleSelectGrupo = (grupos: GrupoCuentas[]) => {
+    grupos.forEach(grupo => {
+      agregarNodoGrupoCuentas(node.id, grupo);
+    });
+    setShowGrupoDialog(false);
   };
 
   const handleDeleteNode = () => {
@@ -166,14 +177,19 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
 
   const isDropTarget = isDragging && attributes['aria-describedby'] === 'droppable';
 
+  // Determinar si este nodo está resaltado
+  const isHighlighted = shouldHighlightNode ? shouldHighlightNode(node.id) : highlightedNodeId === node.id;
+
   return (
     <>
       <div
+        id={`node-${node.id}`}
         ref={setNodeRef}
         style={style}
         className={`flex items-center gap-2 p-3 border-0 rounded-lg mb-2.5 transition-all duration-200
           ${levelBorderColors[level % levelBorderColors.length]}
           ${isDropTarget ? 'ring-2 ring-blue-500 scale-105' : ''}
+          ${isHighlighted ? 'ring-4 ring-yellow-400 bg-yellow-100 shadow-lg' : ''}
           ${node.tipo === 'grupo' ? 'bg-gray-100 hover:bg-gray-200' : 
             (node.tipo === 'cuenta' || node.tipo === 'medida') ? 'bg-white hover:bg-gray-50' : ''}
           shadow-sm hover:shadow-md
@@ -278,6 +294,14 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={() => setShowGrupoDialog(true)}
+                className="hover:bg-blue-100 text-blue-700"
+              >
+                <Plus className="w-4 h-4 mr-1" /> Grupo Cuentas
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => handleAddChild('medida')}
                 className="hover:bg-gray-100"
               >
@@ -302,62 +326,6 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
         <div style={{ marginLeft: `${level * 24 + 48}px` }} className="mr-4 mt-2 mb-2">
           <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
             <div className="space-y-4">
-              {/* Selector de Centros de Costo */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <Label className="text-sm font-semibold text-gray-700">Centros de Costo</Label>
-                  <Button variant="outline" size="sm" onClick={() => setShowCentroCostoDialog(true)}>
-                    Seleccionar
-                  </Button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="p-1 h-6 w-6 hover:bg-gray-100"
-                    onClick={e => { e.stopPropagation(); setCentrosCostoExpandido(!centrosCostoExpandido); }}
-                    aria-label={centrosCostoExpandido ? 'Colapsar' : 'Expandir'}
-                  >
-                    {centrosCostoExpandido ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                  </Button>
-                  <span className="text-sm text-gray-600">
-                    {node.centrosCosto && node.centrosCosto.length > 0
-                      ? `${node.centrosCosto.length} centros seleccionados`
-                      : '0 centros seleccionados'}
-                  </span>
-                </div>
-                {centrosCostoExpandido && node.centrosCosto && node.centrosCosto.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-white rounded border">
-                    {node.centrosCosto.map(centroId => {
-                      const centro = centrosCosto.find(c => c.idNetsuite === centroId);
-                      
-                      if (!centro) {
-                        console.warn(`No se encontró centro de costo con idNetsuite: ${centroId}`);
-                        return null;
-                      }
-                      
-                      return (
-                        <span key={centro.idNetsuite} className="inline-flex items-center bg-blue-100 text-blue-800 rounded-full px-3 py-1 text-xs font-medium hover:bg-blue-200 transition-colors">
-                          {centro.nombre} ({centro.tipo})
-                          <button
-                            type="button"
-                            className="ml-2 text-blue-800 hover:text-red-600 focus:outline-none"
-                            onClick={e => {
-                              e.stopPropagation();
-                              const nuevos = node.centrosCosto.filter(id => id !== centroId);
-                              actualizarNodo(node.id, { centrosCosto: nuevos });
-                            }}
-                            aria-label="Eliminar centro de costo"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
               {/* Selector de Departamentos */}
               <div>
                 <div className="flex justify-between items-center mb-2">
@@ -414,6 +382,62 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
                   </div>
                 )}
               </div>
+
+              {/* Selector de Centros de Costo */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <Label className="text-sm font-semibold text-gray-700">Centros de Costo</Label>
+                  <Button variant="outline" size="sm" onClick={() => setShowCentroCostoDialog(true)}>
+                    Seleccionar
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="p-1 h-6 w-6 hover:bg-gray-100"
+                    onClick={e => { e.stopPropagation(); setCentrosCostoExpandido(!centrosCostoExpandido); }}
+                    aria-label={centrosCostoExpandido ? 'Colapsar' : 'Expandir'}
+                  >
+                    {centrosCostoExpandido ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                  </Button>
+                  <span className="text-sm text-gray-600">
+                    {node.centrosCosto && node.centrosCosto.length > 0
+                      ? `${node.centrosCosto.length} centros seleccionados`
+                      : '0 centros seleccionados'}
+                  </span>
+                </div>
+                {centrosCostoExpandido && node.centrosCosto && node.centrosCosto.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-white rounded border">
+                    {node.centrosCosto.map(centroId => {
+                      const centro = centrosCosto.find(c => c.idNetsuite === centroId);
+                      
+                      if (!centro) {
+                        console.warn(`No se encontró centro de costo con idNetsuite: ${centroId}`);
+                        return null;
+                      }
+                      
+                      return (
+                        <span key={centro.idNetsuite} className="inline-flex items-center bg-blue-100 text-blue-800 rounded-full px-3 py-1 text-xs font-medium hover:bg-blue-200 transition-colors">
+                          {centro.nombre} ({centro.tipo})
+                          <button
+                            type="button"
+                            className="ml-2 text-blue-800 hover:text-red-600 focus:outline-none"
+                            onClick={e => {
+                              e.stopPropagation();
+                              const nuevos = node.centrosCosto.filter(id => id !== centroId);
+                              actualizarNodo(node.id, { centrosCosto: nuevos });
+                            }}
+                            aria-label="Eliminar centro de costo"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -421,7 +445,7 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
 
       {isExpanded && node.hijos && node.hijos.length > 0 && (
         <SortableContext
-          items={node.hijos.map(h => h.id)}
+          items={node.hijos.map(child => child.id)}
           strategy={verticalListSortingStrategy}
         >
           <div className="space-y-2.5">
@@ -437,6 +461,8 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
                 centrosCostoDefault={centrosCostoDefault}
                 departamentosDefault={departamentosDefault}
                 forceExpanded={forceExpanded}
+                highlightedNodeId={highlightedNodeId}
+                shouldHighlightNode={shouldHighlightNode}
               />
             ))}
           </div>
@@ -449,6 +475,14 @@ export const TreeNode: React.FC<TreeNodeProps> = ({ node, level, centrosCostoDef
         onSelect={handleSelectCuenta}
         cuentas={cuentas}
         multiple={true}
+      />
+
+      <SelectGrupoDialog
+        isOpen={showGrupoDialog}
+        onClose={() => setShowGrupoDialog(false)}
+        onSelect={handleSelectGrupo}
+        grupos={gruposCuentas}
+        cuentas={cuentas}
       />
 
       <CentroCostoSelector

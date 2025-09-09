@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Formato, Nodo, CuentaContable, CentroCosto, Departamento } from '../types';
+import { Formato, Nodo, CuentaContable, GrupoCuentas, CentroCosto, Departamento } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 declare global {
@@ -18,6 +18,7 @@ interface AppState {
   formatos: Formato[];
   formatoActual: string | null;
   cuentas: CuentaContable[];
+  gruposCuentas: GrupoCuentas[];
   centrosCosto: CentroCosto[];
   centrosCostoDefault: string[];
   departamentos: Departamento[];
@@ -29,6 +30,7 @@ interface AppState {
   actualizarFormato: (id: string, nombre: string) => void;
   actualizarFormatoDefaults: (id: string, centrosCostoDefault?: string[], departamentosDefault?: string[]) => void;
   agregarNodo: (parentId: string | null, tipo: 'grupo' | 'cuenta' | 'medida', cuenta?: CuentaContable, centrosCosto?: string[], departamentos?: string[]) => void;
+  agregarNodoGrupoCuentas: (parentId: string | null, grupoCuentas: GrupoCuentas) => void;
   actualizarNodo: (id: string, datos: Partial<Nodo>) => void;
   eliminarNodo: (id: string) => void;
   moverNodo: (id: string, nuevoParentId: string | null, indice: number) => void;
@@ -36,6 +38,10 @@ interface AppState {
   agregarCuenta: (cuenta: CuentaContable) => void;
   actualizarCuenta: (id: string, cuenta: CuentaContable) => void;
   eliminarCuenta: (id: string) => void;
+  // Acciones de Grupos de Cuentas
+  agregarGrupoCuentas: (grupo: GrupoCuentas) => void;
+  actualizarGrupoCuentas: (id: string, grupo: GrupoCuentas) => void;
+  eliminarGrupoCuentas: (id: string) => void;
   // Acciones de Centros de Costo
   agregarCentroCosto: (centro: CentroCosto) => void;
   actualizarCentroCosto: (id: string, centro: CentroCosto) => void;
@@ -58,10 +64,11 @@ const initializeStore = async () => {
   if (electronAPI && storeInstance) {
     try {
       // Cargar datos de manera asíncrona
-      const [formatos, formatoActual, cuentas, centrosCosto, centrosCostoDefault, departamentos, departamentosDefault] = await Promise.all([
+      const [formatos, formatoActual, cuentas, gruposCuentas, centrosCosto, centrosCostoDefault, departamentos, departamentosDefault] = await Promise.all([
         electronAPI.store.get('formatos'),
         electronAPI.store.get('formatoActual'),
         electronAPI.store.get('cuentas'),
+        electronAPI.store.get('gruposCuentas'),
         electronAPI.store.get('centrosCosto'),
         electronAPI.store.get('centrosCostoDefault'),
         electronAPI.store.get('departamentos'),
@@ -72,6 +79,7 @@ const initializeStore = async () => {
       const formatosGuardados = formatos || [];
       const formatoActualGuardado = formatoActual || null;
       const cuentasGuardadas = cuentas || [];
+      const gruposCuentasGuardados = gruposCuentas || [];
       const centrosCostoGuardados = centrosCosto || [];
       const centrosCostoDefaultGuardados = centrosCostoDefault || [];
       const departamentosGuardados = departamentos || [];
@@ -82,6 +90,7 @@ const initializeStore = async () => {
         formatos: formatosGuardados,
         formatoActual: formatoActualGuardado,
         cuentas: cuentasGuardadas,
+        gruposCuentas: gruposCuentasGuardados,
         centrosCosto: centrosCostoGuardados,
         centrosCostoDefault: centrosCostoDefaultGuardados,
         departamentos: departamentosGuardados,
@@ -98,6 +107,7 @@ const createStore = () => create<AppState>((set) => ({
   formatos: [],
   formatoActual: null,
   cuentas: [],
+  gruposCuentas: [],
   centrosCosto: [],
   centrosCostoDefault: [],
   departamentos: [],
@@ -612,6 +622,114 @@ const createStore = () => create<AppState>((set) => ({
         departamentos: []
       };
       (window as any).electronAPI?.store.set('departamentos', newState.departamentos);
+      return newState;
+    });
+  },
+
+  // Acciones de Grupos de Cuentas
+  agregarGrupoCuentas: (grupo) => {
+    set((state) => {
+      const newState = {
+        ...state,
+        gruposCuentas: [...state.gruposCuentas, grupo]
+      };
+      (window as any).electronAPI?.store.set('gruposCuentas', newState.gruposCuentas);
+      return newState;
+    });
+  },
+
+  actualizarGrupoCuentas: (id, grupo) => {
+    set((state) => {
+      const newState = {
+        ...state,
+        gruposCuentas: state.gruposCuentas.map(g => g.id === id ? grupo : g)
+      };
+      (window as any).electronAPI?.store.set('gruposCuentas', newState.gruposCuentas);
+      return newState;
+    });
+  },
+
+  eliminarGrupoCuentas: (id) => {
+    set((state) => {
+      const newState = {
+        ...state,
+        gruposCuentas: state.gruposCuentas.filter(g => g.id !== id)
+      };
+      (window as any).electronAPI?.store.set('gruposCuentas', newState.gruposCuentas);
+      return newState;
+    });
+  },
+
+  agregarNodoGrupoCuentas: (parentId, grupoCuentas) => {
+    set((state) => {
+      if (!state.formatoActual) return state;
+
+      // Obtener las cuentas del grupo
+      const cuentasDelGrupo = state.cuentas.filter(cuenta => 
+        grupoCuentas.cuentas.includes(cuenta.id)
+      );
+
+      // Crear un nodo grupo para contener las cuentas
+      const nodoGrupo: Nodo = {
+        id: uuidv4(),
+        tipo: 'grupo',
+        nombre: grupoCuentas.nombre,
+        hijos: [],
+        centrosCosto: [],
+        departamentos: [],
+        invertirValor: false
+      };
+
+      // Crear nodos para cada cuenta del grupo con los centros de costo y departamentos por defecto
+      const formatoActual = state.formatos.find(f => f.id === state.formatoActual);
+      const centrosCostoDefault = formatoActual?.centrosCostoDefault || [];
+      const departamentosDefault = formatoActual?.departamentosDefault || [];
+
+      const nodosCuentas: Nodo[] = cuentasDelGrupo.map(cuenta => ({
+        id: uuidv4(),
+        tipo: 'cuenta' as const,
+        nombre: cuenta.nombre,
+        cuenta: cuenta,
+        cuentaId: cuenta.id,
+        hijos: [],
+        centrosCosto: centrosCostoDefault,
+        departamentos: departamentosDefault,
+        invertirValor: false
+      }));
+
+      nodoGrupo.hijos = nodosCuentas;
+
+      const actualizarNodos = (nodos: Nodo[]): Nodo[] => {
+        if (!parentId) return [...nodos, nodoGrupo];
+
+        return nodos.map(nodo => {
+          if (nodo.id === parentId) {
+            return {
+              ...nodo,
+              hijos: [...nodo.hijos, nodoGrupo]
+            };
+          }
+          return {
+            ...nodo,
+            hijos: actualizarNodos(nodo.hijos)
+          };
+        });
+      };
+
+      const newState = {
+        ...state,
+        formatos: state.formatos.map(formato => {
+          if (formato.id === state.formatoActual) {
+            return {
+              ...formato,
+              estructura: actualizarNodos(formato.estructura)
+            };
+          }
+          return formato;
+        })
+      };
+
+      (window as any).electronAPI?.store.set('formatos', newState.formatos);
       return newState;
     });
   }

@@ -77,7 +77,7 @@ export const CentroCostoSelector: React.FC<CentroCostoSelectorProps> = ({
   // Obtener tipos únicos de los centros filtrados
   const tiposUnicos = Array.from(new Set(filteredCentros.map(centro => centro.tipo))).sort();
 
-  // Función para seleccionar todos los centros de un tipo específico
+  // Función para seleccionar todos los centros de un tipo específico (aditiva)
   const handleSelectByType = (tipo: string) => {
     const centrosDelTipo = filteredCentros
       .filter(centro => centro.tipo === tipo && centro.idNetsuite)
@@ -101,7 +101,13 @@ export const CentroCostoSelector: React.FC<CentroCostoSelectorProps> = ({
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => setCentrosSeleccionados(filteredCentros.filter(c => c.idNetsuite).map(c => c.idNetsuite as string))}
+              onClick={() => {
+                const centrosAgregar = filteredCentros.filter(c => c.idNetsuite).map(c => c.idNetsuite as string);
+                setCentrosSeleccionados(prev => {
+                  const nuevosSeleccionados = new Set([...prev, ...centrosAgregar]);
+                  return Array.from(nuevosSeleccionados);
+                });
+              }}
             >
               Seleccionar todo
             </Button>
