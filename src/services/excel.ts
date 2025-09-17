@@ -25,17 +25,69 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
     return maxProfundidad;
   };
 
-  // Obtener la profundidad máxima del árbol
   const profundidadMaxima = obtenerProfundidadMaxima(formato.estructura) + 1;
 
-  // Configurar columnas dinámicamente
-  worksheet.columns = [
+  // --- INICIO: Lógica para generar columnas de orden ---
+  const nivelesUnicos: { [key: string]: string[] } = {}; // Usar array para mantener el orden de aparición
+
+  // Función para recolectar valores únicos de cada nivel en orden de aparición
+  const recolectarValoresNiveles = (nodos: Nodo[], nivel = 0, valoresAnteriores: string[] = []) => {
+    nodos.forEach(nodo => {
+      const nuevosValores = [...valoresAnteriores];
+      if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
+        nuevosValores[nivel] = nodo.nombre;
+        if (nivel < profundidadMaxima - 1) {
+          for (let i = nivel + 1; i < profundidadMaxima; i++) {
+            nuevosValores[i] = nodo.nombre;
+          }
+        }
+      } else {
+        nuevosValores[nivel] = nodo.nombre;
+      }
+
+      for (let i = 0; i < profundidadMaxima; i++) {
+        const valorNivel = nuevosValores[i];
+        if (valorNivel) {
+          const keyNivel = `nivel${i + 1}`;
+          if (!nivelesUnicos[keyNivel]) {
+            nivelesUnicos[keyNivel] = [];
+          }
+          if (!nivelesUnicos[keyNivel].includes(valorNivel)) {
+            nivelesUnicos[keyNivel].push(valorNivel);
+          }
+        }
+      }
+
+      if (nodo.hijos.length > 0) {
+        recolectarValoresNiveles(nodo.hijos, nivel + 1, nuevosValores);
+      }
+    });
+  };
+
+  recolectarValoresNiveles(formato.estructura);
+
+  // Crear mapas de ordenamiento para cada nivel basados en el orden de aparición
+  const mapasDeOrden: { [key: string]: Map<string, number> } = {};
+  for (let i = 0; i < profundidadMaxima; i++) {
+    const keyNivel = `nivel${i + 1}`;
+    if (nivelesUnicos[keyNivel]) {
+      const valoresEnOrdenDeAparicion = nivelesUnicos[keyNivel];
+      mapasDeOrden[keyNivel] = new Map(valoresEnOrdenDeAparicion.map((valor, index) => [valor, index + 1]));
+    }
+  }
+  // --- FIN: Lógica para generar columnas de orden ---
+
+  // Configurar columnas dinámicamente con columnas de orden
+  const columns = [
     { header: 'Nombre del informe', key: 'nombreInforme', width: 30 },
-    ...Array.from({ length: profundidadMaxima }, (_, i) => ({
-      header: `Nivel ${i + 1}`,
-      key: `nivel${i + 1}`,
-      width: 30
-    })),
+  ];
+
+  for (let i = 0; i < profundidadMaxima; i++) {
+    columns.push({ header: `Nivel ${i + 1}`, key: `nivel${i + 1}`, width: 30 });
+    columns.push({ header: `Orden N${i + 1}`, key: `ordenN${i + 1}`, width: 15 });
+  }
+
+  columns.push(
     { header: 'Centro de costo seleccionados', key: 'centrosCostoIds', width: 30 },
     { header: 'Nombres de centro de costo seleccionados', key: 'centrosCostoNombres', width: 40 },
     { header: 'Departamento seleccionados', key: 'departamentosIds', width: 30 },
@@ -49,7 +101,9 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
     { header: 'Descripción completa', key: 'descripcionCompleta', width: 40 },
     { header: 'Tipo de Nodo', key: 'tipoNodo', width: 15 },
     { header: 'Es Linea de Informe', key: 'esLineaInforme', width: 15 }
-  ];
+  );
+
+  worksheet.columns = columns;
 
   // Estilo para encabezados
   worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -76,7 +130,6 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
         nuevosValores[nivel] = nodo.nombre;
       }
 
-      // Obtener centros de costo y departamentos
       const centrosSeleccionados = nodo.centrosCosto && nodo.centrosCosto.length > 0 
         ? nodo.centrosCosto.map(netSuiteId => {
             const centro = centrosCostoList.find(c => c.idNetsuite === netSuiteId);
@@ -93,20 +146,24 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
           }).filter(Boolean)
         : [];
 
-      // Crear base del objeto de fila
       const baseRowData: { [key: string]: string | number | boolean } = {
         nombreInforme: formato.nombre
       };
       
       for (let i = 0; i < profundidadMaxima; i++) {
-        baseRowData[`nivel${i + 1}`] = nuevosValores[i] || '';
+        const valorNivel = nuevosValores[i] || '';
+        baseRowData[`nivel${i + 1}`] = valorNivel;
+        if (valorNivel && mapasDeOrden[`nivel${i + 1}`]) {
+          baseRowData[`ordenN${i + 1}`] = mapasDeOrden[`nivel${i + 1}`].get(valorNivel) || '';
+        } else {
+          baseRowData[`ordenN${i + 1}`] = '';
+        }
       }
 
       baseRowData['invertirValor'] = nodo.tipo === 'cuenta' && nodo.invertirValor === true ? true : false;
       baseRowData['tipoNodo'] = nodo.tipo;
       baseRowData['esLineaInforme'] = nodo.tipo === 'cuenta' || nodo.tipo === 'medida';
 
-      // Llenar datos de cuenta/medida
       if (nodo.tipo === 'cuenta' && nodo.cuenta) {
         baseRowData['idCuentaContable'] = nodo.cuenta.id || '';
         baseRowData['numeroCuenta'] = nodo.cuenta.codigo || '';
@@ -127,9 +184,7 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
         baseRowData['descripcionCompleta'] = '';
       }
 
-      // Desnormalizar: crear una fila por cada combinación de centro de costo y departamento
       if (centrosSeleccionados.length > 0 && departamentosSeleccionados.length > 0) {
-        // Crear todas las combinaciones posibles
         centrosSeleccionados.forEach(centro => {
           departamentosSeleccionados.forEach(departamento => {
             const rowData = { ...baseRowData };
@@ -148,7 +203,6 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
           });
         });
       } else if (centrosSeleccionados.length > 0) {
-        // Solo centros de costo seleccionados
         centrosSeleccionados.forEach(centro => {
           const rowData = { ...baseRowData };
           rowData['centrosCostoIds'] = centro?.id || '';
@@ -165,7 +219,6 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
           worksheet.addRow(rowData);
         });
       } else if (departamentosSeleccionados.length > 0) {
-        // Solo departamentos seleccionados
         departamentosSeleccionados.forEach(departamento => {
           const rowData = { ...baseRowData };
           rowData['centrosCostoIds'] = '';
@@ -182,7 +235,6 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
           worksheet.addRow(rowData);
         });
       } else {
-        // Sin centros de costo ni departamentos seleccionados
         const rowData = { ...baseRowData };
         rowData['centrosCostoIds'] = '';
         rowData['centrosCostoNombres'] = '';
@@ -198,17 +250,14 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
         worksheet.addRow(rowData);
       }
 
-      // Si tiene hijos, continuar recursivamente
       if (nodo.hijos.length > 0) {
         agregarNodos(nodo.hijos, nivel + 1, nuevosValores);
       }
     });
   };
 
-  // Agregar datos
   agregarNodos(formato.estructura);
 
-  // Agregar bordes y estilo a todas las celdas con datos
   worksheet.eachRow((row, rowNumber) => {
     row.eachCell((cell) => {
       cell.border = {
@@ -217,11 +266,6 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
         bottom: { style: 'thin' },
         right: { style: 'thin' }
       };
-      // Si la celda contiene un número, aplicar formato numérico
-      if (!isNaN(Number(cell.value))) {
-        cell.numFmt = '#,##0.00';
-      }
-      // Estilo para datos (fondo blanco, letra negra)
       if (rowNumber > 1) {
         cell.font = { color: { argb: 'FF000000' } };
         cell.fill = {
@@ -252,17 +296,69 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
     return maxProfundidad;
   };
 
-  // Obtener la profundidad máxima del árbol
   const profundidadMaxima = obtenerProfundidadMaxima(formato.estructura) + 1;
 
-  // Configurar columnas dinámicamente
-  worksheet.columns = [
+  // --- INICIO: Lógica para generar columnas de orden ---
+  const nivelesUnicos: { [key: string]: string[] } = {}; // Usar array para mantener el orden de aparición
+
+  // Función para recolectar valores únicos de cada nivel en orden de aparición
+  const recolectarValoresNiveles = (nodos: Nodo[], nivel = 0, valoresAnteriores: string[] = []) => {
+    nodos.forEach(nodo => {
+      const nuevosValores = [...valoresAnteriores];
+      if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
+        nuevosValores[nivel] = nodo.nombre;
+        if (nivel < profundidadMaxima - 1) {
+          for (let i = nivel + 1; i < profundidadMaxima; i++) {
+            nuevosValores[i] = nodo.nombre;
+          }
+        }
+      } else {
+        nuevosValores[nivel] = nodo.nombre;
+      }
+
+      for (let i = 0; i < profundidadMaxima; i++) {
+        const valorNivel = nuevosValores[i];
+        if (valorNivel) {
+          const keyNivel = `nivel${i + 1}`;
+          if (!nivelesUnicos[keyNivel]) {
+            nivelesUnicos[keyNivel] = [];
+          }
+          if (!nivelesUnicos[keyNivel].includes(valorNivel)) {
+            nivelesUnicos[keyNivel].push(valorNivel);
+          }
+        }
+      }
+
+      if (nodo.hijos.length > 0) {
+        recolectarValoresNiveles(nodo.hijos, nivel + 1, nuevosValores);
+      }
+    });
+  };
+
+  recolectarValoresNiveles(formato.estructura);
+
+  // Crear mapas de ordenamiento para cada nivel basados en el orden de aparición
+  const mapasDeOrden: { [key: string]: Map<string, number> } = {};
+  for (let i = 0; i < profundidadMaxima; i++) {
+    const keyNivel = `nivel${i + 1}`;
+    if (nivelesUnicos[keyNivel]) {
+      const valoresEnOrdenDeAparicion = nivelesUnicos[keyNivel];
+      mapasDeOrden[keyNivel] = new Map(valoresEnOrdenDeAparicion.map((valor, index) => [valor, index + 1]));
+    }
+  }
+  // --- FIN: Lógica para generar columnas de orden ---
+
+  // Configurar columnas dinámicamente con columnas de orden
+  const columns = [
     { header: 'Nombre del informe', key: 'nombreInforme', width: 30 },
-    ...Array.from({ length: profundidadMaxima }, (_, i) => ({
-      header: `Nivel ${i + 1}`,
-      key: `nivel${i + 1}`,
-      width: 30
-    })),
+  ];
+
+  for (let i = 0; i < profundidadMaxima; i++) {
+    columns.push({ header: `Nivel ${i + 1}`, key: `nivel${i + 1}`, width: 30 });
+    columns.push({ header: `Orden N${i + 1}`, key: `ordenN${i + 1}`, width: 15 });
+  }
+
+  columns.push(
     { header: 'Centro de costo seleccionados', key: 'centrosCostoIds', width: 30 },
     { header: 'Nombres de centro de costo seleccionados', key: 'centrosCostoNombres', width: 40 },
     { header: 'Departamento seleccionados', key: 'departamentosIds', width: 30 },
@@ -276,7 +372,9 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
     { header: 'Descripción completa', key: 'descripcionCompleta', width: 40 },
     { header: 'Tipo de Nodo', key: 'tipoNodo', width: 15 },
     { header: 'Es Linea de Informe', key: 'esLineaInforme', width: 15 }
-  ];
+  );
+
+  worksheet.columns = columns;
 
   // Estilo para encabezados
   worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -302,17 +400,21 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
         nuevosValores[nivel] = nodo.nombre;
       }
 
-      // Crear objeto de fila dinámicamente
       const rowData: { [key: string]: string | number | boolean } = {
         nombreInforme: formato.nombre
       };
+      
       for (let i = 0; i < profundidadMaxima; i++) {
-        rowData[`nivel${i + 1}`] = nuevosValores[i] || '';
+        const valorNivel = nuevosValores[i] || '';
+        rowData[`nivel${i + 1}`] = valorNivel;
+        if (valorNivel && mapasDeOrden[`nivel${i + 1}`]) {
+          rowData[`ordenN${i + 1}`] = mapasDeOrden[`nivel${i + 1}`].get(valorNivel) || '';
+        } else {
+          rowData[`ordenN${i + 1}`] = '';
+        }
       }
 
-      // Centros de costo seleccionados (ID Netsuite y nombres)
       if (nodo.centrosCosto && nodo.centrosCosto.length > 0 && centrosCostoList.length > 0) {
-        // Los IDs ya son NetSuite IDs, solo necesitamos verificar que existan en la lista
         const centrosEncontrados = nodo.centrosCosto
           .map(netSuiteId => {
             const centro = centrosCostoList.find(c => c.idNetsuite === netSuiteId);
@@ -327,11 +429,9 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
         rowData['centrosCostoNombres'] = '';
       }
 
-      // Departamentos seleccionados (ID y nombres)
       if (nodo.departamentos && nodo.departamentos.length > 0 && departamentosList.length > 0) {
         const departamentosEncontrados = nodo.departamentos
           .map(deptoId => {
-            // Buscar por id (número) o por idNetsuite (string)
             const depto = departamentosList.find(d => 
               String(d.id) === String(deptoId) || d.idNetsuite === deptoId
             );
@@ -346,23 +446,17 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
         rowData['departamentosNombres'] = '';
       }
 
-      // Invertir valor (solo para cuentas contables)
       rowData['invertirValor'] = nodo.tipo === 'cuenta' && nodo.invertirValor === true ? true : false;
 
-      // Orden global de línea en informe (solo para cuentas y medidas)
       if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
         rowData['ordenGlobal'] = ordenGlobal++;
       } else {
         rowData['ordenGlobal'] = '';
       }
 
-      // Tipo de nodo (grupo, cuenta, medida)
       rowData['tipoNodo'] = nodo.tipo;
-
-      // Es línea de informe (para cuentas y medidas)
       rowData['esLineaInforme'] = nodo.tipo === 'cuenta' || nodo.tipo === 'medida';
 
-      // Si es cuenta, llenar las columnas extra con datos de cuenta
       if (nodo.tipo === 'cuenta' && nodo.cuenta) {
         rowData['idCuentaContable'] = nodo.cuenta.id || '';
         rowData['numeroCuenta'] = nodo.cuenta.codigo || '';
@@ -370,7 +464,6 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
         rowData['tipoCuenta'] = nodo.cuenta.naturaleza || '';
         rowData['descripcionCompleta'] = `${nodo.cuenta.codigo || ''} ${nodo.cuenta.nombre || ''}`.trim();
       }
-      // Si es medida, llenar las columnas extra con el nombre de la medida
       else if (nodo.tipo === 'medida') {
         rowData['idCuentaContable'] = '';
         rowData['numeroCuenta'] = nodo.nombre;
@@ -378,7 +471,6 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
         rowData['tipoCuenta'] = nodo.nombre;
         rowData['descripcionCompleta'] = nodo.nombre;
       }
-      // Otros casos
       else {
         rowData['idCuentaContable'] = '';
         rowData['numeroCuenta'] = '';
@@ -389,17 +481,14 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
 
       worksheet.addRow(rowData);
 
-      // Si tiene hijos, continuar recursivamente
       if (nodo.hijos.length > 0) {
         agregarNodos(nodo.hijos, nivel + 1, nuevosValores);
       }
     });
   };
 
-  // Agregar datos
   agregarNodos(formato.estructura);
 
-  // Agregar bordes y estilo a todas las celdas con datos
   worksheet.eachRow((row, rowNumber) => {
     row.eachCell((cell) => {
       cell.border = {
@@ -408,11 +497,6 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
         bottom: { style: 'thin' },
         right: { style: 'thin' }
       };
-      // Si la celda contiene un número, aplicar formato numérico
-      if (!isNaN(Number(cell.value))) {
-        cell.numFmt = '#,##0.00';
-      }
-      // Estilo para datos (fondo blanco, letra negra)
       if (rowNumber > 1) {
         cell.font = { color: { argb: 'FF000000' } };
         cell.fill = {
