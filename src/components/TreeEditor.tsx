@@ -34,6 +34,7 @@ import { Checkbox } from "./ui/checkbox";
 import { AddCuentaDialog } from './AddCuentaDialog';
 import { SelectCuentaDialog } from './SelectCuentaDialog';
 import { SelectGrupoDialog } from './SelectGrupoDialog';
+import { ExportProgressDialog, ExportProgress } from './ExportProgressDialog';
 import { Formato, Nodo, CuentaContable, GrupoCuentas } from '../types';
 import { Alert } from './ui/alert';
 
@@ -81,6 +82,8 @@ export const TreeEditor: React.FC = () => {
   const [currentResultIndex, setCurrentResultIndex] = useState(0);
   const [isSearchFixed, setIsSearchFixed] = useState(false);
   const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
+  const [showProgressDialog, setShowProgressDialog] = useState(false);
 
   const formato = formatos.find(f => f.id === formatoActual);
 
@@ -440,7 +443,7 @@ export const TreeEditor: React.FC = () => {
                   centrosCostoList: centrosCosto, 
                   departamentosList: departamentos 
                 });
-                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const blob = new Blob([buffer as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -484,13 +487,38 @@ export const TreeEditor: React.FC = () => {
               }
 
               try {
+                // Inicializar el progreso
+                setExportProgress({
+                  status: 'preparing',
+                  currentRow: 0,
+                  totalRows: 0,
+                  currentPhase: 'Preparando exportación...'
+                });
+                setShowProgressDialog(true);
+
                 const buffer = await exportarAExcelDesnormalizado({ 
                   formato, 
                   datos: {}, 
                   centrosCostoList: centrosCosto, 
-                  departamentosList: departamentos 
+                  departamentosList: departamentos,
+                  onProgress: (current: number, total: number, phase: string) => {
+                    setExportProgress({
+                      status: 'processing',
+                      currentRow: current,
+                      totalRows: total,
+                      currentPhase: phase
+                    });
+                  }
                 });
-                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                
+                // Finalización
+                setExportProgress(prev => prev ? {
+                  ...prev,
+                  status: 'finalizing',
+                  currentPhase: 'Descargando archivo...'
+                } : null);
+                
+                const blob = new Blob([buffer as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -499,11 +527,28 @@ export const TreeEditor: React.FC = () => {
                 a.click();
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
-                setExportSuccess('¡Exportación desnormalizada completada exitosamente!');
-                setShowExportModal(true);
+                
+                // Completado
+                setExportProgress(prev => prev ? {
+                  ...prev,
+                  status: 'complete',
+                  currentPhase: '¡Exportación completada!'
+                } : null);
+                
+                // Cerrar el diálogo después de 2 segundos
+                setTimeout(() => {
+                  setShowProgressDialog(false);
+                  setExportProgress(null);
+                }, 2000);
               } catch (error) {
-                setExportError('Ocurrió un error al exportar a Excel desnormalizado.');
-                setShowExportModal(true);
+                console.error('Error en exportación:', error);
+                setExportProgress({
+                  status: 'error',
+                  currentRow: 0,
+                  totalRows: 0,
+                  currentPhase: 'Error',
+                  errorMessage: error instanceof Error ? error.message : 'Ocurrió un error al exportar a Excel desnormalizado.'
+                });
               }
             }}
             variant="outline"
@@ -1232,6 +1277,18 @@ export const TreeEditor: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Diálogo de progreso de exportación */}
+      {exportProgress && (
+        <ExportProgressDialog
+          isOpen={showProgressDialog}
+          progress={exportProgress}
+          onClose={() => {
+            setShowProgressDialog(false);
+            setExportProgress(null);
+          }}
+        />
+      )}
 
       {/* Botón flotante para ir arriba */}
       {showScrollToTop && (

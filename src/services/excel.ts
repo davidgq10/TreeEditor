@@ -7,11 +7,15 @@ interface ExportOptions {
   datos: { [cuentaId: string]: number };
   centrosCostoList?: CentroCosto[]; // Opcional, para mostrar nombres
   departamentosList?: Departamento[]; // Opcional, para mostrar nombres
+  onProgress?: (current: number, total: number, phase: string) => void;
 }
 
-export async function exportarAExcelDesnormalizado({ formato, datos, centrosCostoList = [], departamentosList = [] }: ExportOptions): Promise<Buffer> {
+export async function exportarAExcelDesnormalizado({ formato, datos, centrosCostoList = [], departamentosList = [], onProgress }: ExportOptions): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('FormatoInforme');
+
+  // Reportar progreso inicial
+  onProgress?.(0, 100, 'Preparando exportación...');
 
   // Función para obtener la profundidad máxima del árbol
   const obtenerProfundidadMaxima = (nodos: Nodo[], nivel = 0): number => {
@@ -114,10 +118,39 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
   };
 
   let ordenGlobal = 1;
+  let filasGeneradas = 0;
+  let ultimoReporte = Date.now();
+  const CHUNK_SIZE = 100; // Reportar progreso cada 100 filas
+  const startTime = Date.now();
   
-  // Función recursiva para agregar nodos con desnormalización
-  const agregarNodos = (nodos: Nodo[], nivel: number = 0, valoresAnteriores: string[] = []) => {
+  // Primero, contar el total de filas que se generarán
+  onProgress?.(0, 100, 'Calculando total de filas...');
+  const contarFilas = (nodos: Nodo[]): number => {
+    let total = 0;
     nodos.forEach(nodo => {
+      const centrosCount = (nodo.centrosCosto && nodo.centrosCosto.length > 0) ? nodo.centrosCosto.length : 1;
+      const deptosCount = (nodo.departamentos && nodo.departamentos.length > 0) ? nodo.departamentos.length : 1;
+      
+      // Si tiene ambos, se multiplican (combinaciones)
+      if (nodo.centrosCosto && nodo.centrosCosto.length > 0 && nodo.departamentos && nodo.departamentos.length > 0) {
+        total += centrosCount * deptosCount;
+      } else {
+        total += Math.max(centrosCount, deptosCount);
+      }
+      
+      if (nodo.hijos.length > 0) {
+        total += contarFilas(nodo.hijos);
+      }
+    });
+    return total;
+  };
+  
+  const totalFilasEstimadas = contarFilas(formato.estructura);
+  console.log(`Total de filas estimadas: ${totalFilasEstimadas}`);
+  
+  // Función recursiva para agregar nodos con desnormalización y reporte de progreso
+  const agregarNodos = async (nodos: Nodo[], nivel: number = 0, valoresAnteriores: string[] = []): Promise<void> => {
+    for (const nodo of nodos) {
       const nuevosValores = [...valoresAnteriores];
       if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
         nuevosValores[nivel] = nodo.nombre;
@@ -185,8 +218,8 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
       }
 
       if (centrosSeleccionados.length > 0 && departamentosSeleccionados.length > 0) {
-        centrosSeleccionados.forEach(centro => {
-          departamentosSeleccionados.forEach(departamento => {
+        for (const centro of centrosSeleccionados) {
+          for (const departamento of departamentosSeleccionados) {
             const rowData = { ...baseRowData };
             rowData['centrosCostoIds'] = centro?.id || '';
             rowData['centrosCostoNombres'] = centro?.nombre || '';
@@ -200,10 +233,22 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
             }
             
             worksheet.addRow(rowData);
-          });
-        });
+            filasGeneradas++;
+            
+            // Reportar progreso cada CHUNK_SIZE filas
+            if (filasGeneradas % CHUNK_SIZE === 0) {
+              const ahora = Date.now();
+              if (ahora - ultimoReporte >= 100) { // Reportar máximo cada 100ms
+                onProgress?.(filasGeneradas, totalFilasEstimadas, `Procesando filas (${filasGeneradas.toLocaleString()} / ${totalFilasEstimadas.toLocaleString()})...`);
+                ultimoReporte = ahora;
+                // Yield para no bloquear el thread
+                await new Promise(resolve => setTimeout(resolve, 0));
+              }
+            }
+          }
+        }
       } else if (centrosSeleccionados.length > 0) {
-        centrosSeleccionados.forEach(centro => {
+        for (const centro of centrosSeleccionados) {
           const rowData = { ...baseRowData };
           rowData['centrosCostoIds'] = centro?.id || '';
           rowData['centrosCostoNombres'] = centro?.nombre || '';
@@ -217,9 +262,19 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
           }
           
           worksheet.addRow(rowData);
-        });
+          filasGeneradas++;
+          
+          if (filasGeneradas % CHUNK_SIZE === 0) {
+            const ahora = Date.now();
+            if (ahora - ultimoReporte >= 100) {
+              onProgress?.(filasGeneradas, totalFilasEstimadas, `Procesando filas (${filasGeneradas.toLocaleString()} / ${totalFilasEstimadas.toLocaleString()})...`);
+              ultimoReporte = ahora;
+              await new Promise(resolve => setTimeout(resolve, 0));
+            }
+          }
+        }
       } else if (departamentosSeleccionados.length > 0) {
-        departamentosSeleccionados.forEach(departamento => {
+        for (const departamento of departamentosSeleccionados) {
           const rowData = { ...baseRowData };
           rowData['centrosCostoIds'] = '';
           rowData['centrosCostoNombres'] = '';
@@ -233,7 +288,17 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
           }
           
           worksheet.addRow(rowData);
-        });
+          filasGeneradas++;
+          
+          if (filasGeneradas % CHUNK_SIZE === 0) {
+            const ahora = Date.now();
+            if (ahora - ultimoReporte >= 100) {
+              onProgress?.(filasGeneradas, totalFilasEstimadas, `Procesando filas (${filasGeneradas.toLocaleString()} / ${totalFilasEstimadas.toLocaleString()})...`);
+              ultimoReporte = ahora;
+              await new Promise(resolve => setTimeout(resolve, 0));
+            }
+          }
+        }
       } else {
         const rowData = { ...baseRowData };
         rowData['centrosCostoIds'] = '';
@@ -248,15 +313,31 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
         }
         
         worksheet.addRow(rowData);
+        filasGeneradas++;
+        
+        if (filasGeneradas % CHUNK_SIZE === 0) {
+          const ahora = Date.now();
+          if (ahora - ultimoReporte >= 100) {
+            onProgress?.(filasGeneradas, totalFilasEstimadas, `Procesando filas (${filasGeneradas.toLocaleString()} / ${totalFilasEstimadas.toLocaleString()})...`);
+            ultimoReporte = ahora;
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
+        }
       }
 
       if (nodo.hijos.length > 0) {
-        agregarNodos(nodo.hijos, nivel + 1, nuevosValores);
+        await agregarNodos(nodo.hijos, nivel + 1, nuevosValores);
       }
-    });
+    }
   };
 
-  agregarNodos(formato.estructura);
+  await agregarNodos(formato.estructura);
+  
+  // Reportar progreso final de procesamiento
+  onProgress?.(filasGeneradas, filasGeneradas, `Se generaron ${filasGeneradas.toLocaleString()} filas`);
+  
+  // Aplicar estilos
+  onProgress?.(filasGeneradas, filasGeneradas, 'Aplicando estilos al archivo...');
 
   worksheet.eachRow((row, rowNumber) => {
     row.eachCell((cell) => {
@@ -277,7 +358,14 @@ export async function exportarAExcelDesnormalizado({ formato, datos, centrosCost
     });
   });
 
-  return workbook.xlsx.writeBuffer() as Promise<Buffer>;
+  // Generar el archivo Excel
+  onProgress?.(filasGeneradas, filasGeneradas, 'Generando archivo Excel...');
+  const buffer = await workbook.xlsx.writeBuffer();
+  
+  // Log de verificación de integridad
+  console.log(`✓ Exportación completada: ${filasGeneradas} filas generadas en ${((Date.now() - startTime) / 1000).toFixed(2)}s`);
+  
+  return buffer as unknown as Buffer;
 }
 
 export async function exportarAExcel({ formato, datos, centrosCostoList = [], departamentosList = [] }: ExportOptions): Promise<Buffer> {
@@ -508,7 +596,7 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
     });
   });
 
-  return workbook.xlsx.writeBuffer() as Promise<Buffer>;
+  return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
 }
 
 export interface ImportOptions {
@@ -897,7 +985,7 @@ export async function exportarGruposCuentasAExcel({ gruposCuentas, cuentasList }
     });
   });
 
-  return workbook.xlsx.writeBuffer() as Promise<Buffer>;
+  return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
 }
 
 export async function importarGruposCuentasDesdeExcel({ file, cuentasList }: ImportGruposOptions): Promise<{ gruposCuentas: GrupoCuentas[] }> {
