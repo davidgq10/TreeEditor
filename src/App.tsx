@@ -111,7 +111,7 @@ export const App: React.FC = () => {
         centrosCostoList: useAppStore.getState().centrosCosto,
         departamentosList: useAppStore.getState().departamentos
       });
-      
+
       // Agregar el nuevo formato importado
       const nuevoFormato: Formato = {
         id: formato.id,
@@ -120,7 +120,7 @@ export const App: React.FC = () => {
         centrosCostoDefault: formato.centrosCostoDefault,
         departamentosDefault: formato.departamentosDefault
       };
-      
+
       agregarFormato(nuevoFormato);
       setShowImportModal(true);
     } catch (error) {
@@ -143,7 +143,7 @@ export const App: React.FC = () => {
     isOpen: false,
     title: '',
     message: '',
-    onConfirm: () => {}
+    onConfirm: () => { }
   });
 
   return (
@@ -162,9 +162,9 @@ export const App: React.FC = () => {
                   style={!showCatalog && !showCentrosCosto && !showDepartamentos && !showGruposCuentas ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
                   onClick={() => handleViewChange('formatos')}
                 >
-                  <FileText 
-                    className="w-4 h-4 mr-2" 
-                    style={!showCatalog && !showCentrosCosto && !showDepartamentos && !showGruposCuentas ? { color: 'var(--theme-primary)' } : {}} 
+                  <FileText
+                    className="w-4 h-4 mr-2"
+                    style={!showCatalog && !showCentrosCosto && !showDepartamentos && !showGruposCuentas ? { color: 'var(--theme-primary)' } : {}}
                   />
                   Formatos
                 </button>
@@ -175,9 +175,9 @@ export const App: React.FC = () => {
                   style={showCatalog ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
                   onClick={() => handleViewChange('catalogo')}
                 >
-                  <Book 
-                    className="w-4 h-4 mr-2" 
-                    style={showCatalog ? { color: 'var(--theme-primary)' } : {}} 
+                  <Book
+                    className="w-4 h-4 mr-2"
+                    style={showCatalog ? { color: 'var(--theme-primary)' } : {}}
                   />
                   Cuentas contables
                 </button>
@@ -188,9 +188,9 @@ export const App: React.FC = () => {
                   style={showGruposCuentas ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
                   onClick={() => handleViewChange('grupos')}
                 >
-                  <FolderOpen 
-                    className="w-4 h-4 mr-2" 
-                    style={showGruposCuentas ? { color: 'var(--theme-primary)' } : {}} 
+                  <FolderOpen
+                    className="w-4 h-4 mr-2"
+                    style={showGruposCuentas ? { color: 'var(--theme-primary)' } : {}}
                   />
                   Grupos de Cuentas
                 </button>
@@ -201,9 +201,9 @@ export const App: React.FC = () => {
                   style={showCentrosCosto ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
                   onClick={() => handleViewChange('centros')}
                 >
-                  <Building2 
-                    className="w-4 h-4 mr-2" 
-                    style={showCentrosCosto ? { color: 'var(--theme-primary)' } : {}} 
+                  <Building2
+                    className="w-4 h-4 mr-2"
+                    style={showCentrosCosto ? { color: 'var(--theme-primary)' } : {}}
                   />
                   Centros de Costo
                 </button>
@@ -214,9 +214,9 @@ export const App: React.FC = () => {
                   style={showDepartamentos ? { color: 'var(--theme-primary)', borderBottom: '3px solid var(--theme-primary)' } : {}}
                   onClick={() => handleViewChange('departamentos')}
                 >
-                  <Users 
-                    className="w-4 h-4 mr-2" 
-                    style={showDepartamentos ? { color: 'var(--theme-primary)' } : {}} 
+                  <Users
+                    className="w-4 h-4 mr-2"
+                    style={showDepartamentos ? { color: 'var(--theme-primary)' } : {}}
                   />
                   Departamentos
                 </button>
@@ -402,14 +402,10 @@ export const App: React.FC = () => {
                   </h3>
                   <div className="mt-2 text-sm text-yellow-700">
                     <p>
-                      <strong>Solo se pueden importar archivos que NO hayan sido exportados con la función "Excel Desnormalizado".</strong>
+                      <strong>Asegúrese de usar únicamente archivos exportados con la función "Descargar Excel" de esta aplicación.</strong>
                     </p>
                     <p className="mt-2">
-                      Si el archivo fue exportado usando la opción "Excel Desnormalizado" (que expande las combinaciones de centros de costo y departamentos), 
-                      la importación no funcionará correctamente y podría generar datos incorrectos.
-                    </p>
-                    <p className="mt-2">
-                      Asegúrese de usar únicamente archivos exportados con la función "Excel" estándar.
+                      La importación solo funciona correctamente con archivos que fueron exportados usando el botón "Descargar Excel" estándar.
                     </p>
                   </div>
                 </div>
@@ -417,8 +413,8 @@ export const App: React.FC = () => {
             </div>
           </div>
           <div className="flex justify-end gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setShowImportWarning(false)}
             >
               Cancelar

@@ -1,4 +1,4 @@
-import ExcelJS from 'exceljs';
+﻿import ExcelJS from 'exceljs';
 import { Formato, Nodo, CuentaContable, CentroCosto, Departamento, GrupoCuentas } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -10,369 +10,11 @@ interface ExportOptions {
   onProgress?: (current: number, total: number, phase: string) => void;
 }
 
-export async function exportarAExcelDesnormalizado({ formato, datos, centrosCostoList = [], departamentosList = [], onProgress }: ExportOptions): Promise<Buffer> {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('FormatoInforme');
-
-  // Reportar progreso inicial
-  onProgress?.(0, 100, 'Preparando exportación...');
-
-  // Función para obtener la profundidad máxima del árbol
-  const obtenerProfundidadMaxima = (nodos: Nodo[], nivel = 0): number => {
-    let maxProfundidad = nivel;
-    nodos.forEach(nodo => {
-      if (nodo.hijos.length > 0) {
-        const profundidadHijos = obtenerProfundidadMaxima(nodo.hijos, nivel + 1);
-        maxProfundidad = Math.max(maxProfundidad, profundidadHijos);
-      }
-    });
-    return maxProfundidad;
-  };
-
-  const profundidadMaxima = obtenerProfundidadMaxima(formato.estructura) + 1;
-
-  // --- INICIO: Lógica para generar columnas de orden ---
-  const nivelesUnicos: { [key: string]: string[] } = {}; // Usar array para mantener el orden de aparición
-
-  // Función para recolectar valores únicos de cada nivel en orden de aparición
-  const recolectarValoresNiveles = (nodos: Nodo[], nivel = 0, valoresAnteriores: string[] = []) => {
-    nodos.forEach(nodo => {
-      const nuevosValores = [...valoresAnteriores];
-      if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
-        nuevosValores[nivel] = nodo.nombre;
-        if (nivel < profundidadMaxima - 1) {
-          for (let i = nivel + 1; i < profundidadMaxima; i++) {
-            nuevosValores[i] = nodo.nombre;
-          }
-        }
-      } else {
-        nuevosValores[nivel] = nodo.nombre;
-      }
-
-      for (let i = 0; i < profundidadMaxima; i++) {
-        const valorNivel = nuevosValores[i];
-        if (valorNivel) {
-          const keyNivel = `nivel${i + 1}`;
-          if (!nivelesUnicos[keyNivel]) {
-            nivelesUnicos[keyNivel] = [];
-          }
-          if (!nivelesUnicos[keyNivel].includes(valorNivel)) {
-            nivelesUnicos[keyNivel].push(valorNivel);
-          }
-        }
-      }
-
-      if (nodo.hijos.length > 0) {
-        recolectarValoresNiveles(nodo.hijos, nivel + 1, nuevosValores);
-      }
-    });
-  };
-
-  recolectarValoresNiveles(formato.estructura);
-
-  // Crear mapas de ordenamiento para cada nivel basados en el orden de aparición
-  const mapasDeOrden: { [key: string]: Map<string, number> } = {};
-  for (let i = 0; i < profundidadMaxima; i++) {
-    const keyNivel = `nivel${i + 1}`;
-    if (nivelesUnicos[keyNivel]) {
-      const valoresEnOrdenDeAparicion = nivelesUnicos[keyNivel];
-      mapasDeOrden[keyNivel] = new Map(valoresEnOrdenDeAparicion.map((valor, index) => [valor, index + 1]));
-    }
-  }
-  // --- FIN: Lógica para generar columnas de orden ---
-
-  // Configurar columnas dinámicamente con columnas de orden
-  const columns = [
-    { header: 'Nombre del informe', key: 'nombreInforme', width: 30 },
-  ];
-
-  for (let i = 0; i < profundidadMaxima; i++) {
-    columns.push({ header: `Nivel ${i + 1}`, key: `nivel${i + 1}`, width: 30 });
-    columns.push({ header: `Orden N${i + 1}`, key: `ordenN${i + 1}`, width: 15 });
-  }
-
-  columns.push(
-    { header: 'Centro de costo seleccionados', key: 'centrosCostoIds', width: 30 },
-    { header: 'Nombres de centro de costo seleccionados', key: 'centrosCostoNombres', width: 40 },
-    { header: 'Departamento seleccionados', key: 'departamentosIds', width: 30 },
-    { header: 'Nombres de departamento seleccionados', key: 'departamentosNombres', width: 40 },
-    { header: 'Invertir valor', key: 'invertirValor', width: 15 },
-    { header: 'Orden global de linea en informe', key: 'ordenGlobal', width: 15 },
-    { header: 'ID Cuenta Contable', key: 'idCuentaContable', width: 40 },
-    { header: 'Numero de Cuenta', key: 'numeroCuenta', width: 20 },
-    { header: 'Nombre de Cuenta', key: 'nombreCuenta', width: 30 },
-    { header: 'Tipo de Cuenta', key: 'tipoCuenta', width: 20 },
-    { header: 'Descripción completa', key: 'descripcionCompleta', width: 40 },
-    { header: 'Tipo de Nodo', key: 'tipoNodo', width: 15 },
-    { header: 'Es Linea de Informe', key: 'esLineaInforme', width: 15 }
-  );
-
-  worksheet.columns = columns;
-
-  // Estilo para encabezados
-  worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  worksheet.getRow(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FF000000' }
-  };
-
-  let ordenGlobal = 1;
-  let filasGeneradas = 0;
-  let ultimoReporte = Date.now();
-  const CHUNK_SIZE = 100; // Reportar progreso cada 100 filas
-  const startTime = Date.now();
-  
-  // Primero, contar el total de filas que se generarán
-  onProgress?.(0, 100, 'Calculando total de filas...');
-  const contarFilas = (nodos: Nodo[]): number => {
-    let total = 0;
-    nodos.forEach(nodo => {
-      const centrosCount = (nodo.centrosCosto && nodo.centrosCosto.length > 0) ? nodo.centrosCosto.length : 1;
-      const deptosCount = (nodo.departamentos && nodo.departamentos.length > 0) ? nodo.departamentos.length : 1;
-      
-      // Si tiene ambos, se multiplican (combinaciones)
-      if (nodo.centrosCosto && nodo.centrosCosto.length > 0 && nodo.departamentos && nodo.departamentos.length > 0) {
-        total += centrosCount * deptosCount;
-      } else {
-        total += Math.max(centrosCount, deptosCount);
-      }
-      
-      if (nodo.hijos.length > 0) {
-        total += contarFilas(nodo.hijos);
-      }
-    });
-    return total;
-  };
-  
-  const totalFilasEstimadas = contarFilas(formato.estructura);
-  console.log(`Total de filas estimadas: ${totalFilasEstimadas}`);
-  
-  // Función recursiva para agregar nodos con desnormalización y reporte de progreso
-  const agregarNodos = async (nodos: Nodo[], nivel: number = 0, valoresAnteriores: string[] = []): Promise<void> => {
-    for (const nodo of nodos) {
-      const nuevosValores = [...valoresAnteriores];
-      if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
-        nuevosValores[nivel] = nodo.nombre;
-        if (nivel < profundidadMaxima - 1) {
-          for (let i = nivel + 1; i < profundidadMaxima; i++) {
-            nuevosValores[i] = nodo.nombre;
-          }
-        }
-      } else {
-        nuevosValores[nivel] = nodo.nombre;
-      }
-
-      const centrosSeleccionados = nodo.centrosCosto && nodo.centrosCosto.length > 0 
-        ? nodo.centrosCosto.map(netSuiteId => {
-            const centro = centrosCostoList.find(c => c.idNetsuite === netSuiteId);
-            return centro ? { id: netSuiteId, nombre: centro.nombre } : null;
-          }).filter(Boolean)
-        : [];
-
-      const departamentosSeleccionados = nodo.departamentos && nodo.departamentos.length > 0
-        ? nodo.departamentos.map(deptoId => {
-            const depto = departamentosList.find(d => 
-              String(d.id) === String(deptoId) || d.idNetsuite === deptoId
-            );
-            return depto ? { id: depto.id, nombre: depto.nombre } : null;
-          }).filter(Boolean)
-        : [];
-
-      const baseRowData: { [key: string]: string | number | boolean } = {
-        nombreInforme: formato.nombre
-      };
-      
-      for (let i = 0; i < profundidadMaxima; i++) {
-        const valorNivel = nuevosValores[i] || '';
-        baseRowData[`nivel${i + 1}`] = valorNivel;
-        if (valorNivel && mapasDeOrden[`nivel${i + 1}`]) {
-          baseRowData[`ordenN${i + 1}`] = mapasDeOrden[`nivel${i + 1}`].get(valorNivel) || '';
-        } else {
-          baseRowData[`ordenN${i + 1}`] = '';
-        }
-      }
-
-      baseRowData['invertirValor'] = nodo.tipo === 'cuenta' && nodo.invertirValor === true ? true : false;
-      baseRowData['tipoNodo'] = nodo.tipo;
-      baseRowData['esLineaInforme'] = nodo.tipo === 'cuenta' || nodo.tipo === 'medida';
-
-      if (nodo.tipo === 'cuenta' && nodo.cuenta) {
-        baseRowData['idCuentaContable'] = nodo.cuenta.id || '';
-        baseRowData['numeroCuenta'] = nodo.cuenta.codigo || '';
-        baseRowData['nombreCuenta'] = nodo.cuenta.nombre || '';
-        baseRowData['tipoCuenta'] = nodo.cuenta.naturaleza || '';
-        baseRowData['descripcionCompleta'] = `${nodo.cuenta.codigo || ''} ${nodo.cuenta.nombre || ''}`.trim();
-      } else if (nodo.tipo === 'medida') {
-        baseRowData['idCuentaContable'] = '';
-        baseRowData['numeroCuenta'] = nodo.nombre;
-        baseRowData['nombreCuenta'] = nodo.nombre;
-        baseRowData['tipoCuenta'] = nodo.nombre;
-        baseRowData['descripcionCompleta'] = nodo.nombre;
-      } else {
-        baseRowData['idCuentaContable'] = '';
-        baseRowData['numeroCuenta'] = '';
-        baseRowData['nombreCuenta'] = '';
-        baseRowData['tipoCuenta'] = '';
-        baseRowData['descripcionCompleta'] = '';
-      }
-
-      if (centrosSeleccionados.length > 0 && departamentosSeleccionados.length > 0) {
-        for (const centro of centrosSeleccionados) {
-          for (const departamento of departamentosSeleccionados) {
-            const rowData = { ...baseRowData };
-            rowData['centrosCostoIds'] = centro?.id || '';
-            rowData['centrosCostoNombres'] = centro?.nombre || '';
-            rowData['departamentosIds'] = departamento?.id || '';
-            rowData['departamentosNombres'] = departamento?.nombre || '';
-            
-            if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
-              rowData['ordenGlobal'] = ordenGlobal++;
-            } else {
-              rowData['ordenGlobal'] = '';
-            }
-            
-            worksheet.addRow(rowData);
-            filasGeneradas++;
-            
-            // Reportar progreso cada CHUNK_SIZE filas
-            if (filasGeneradas % CHUNK_SIZE === 0) {
-              const ahora = Date.now();
-              if (ahora - ultimoReporte >= 100) { // Reportar máximo cada 100ms
-                onProgress?.(filasGeneradas, totalFilasEstimadas, `Procesando filas (${filasGeneradas.toLocaleString()} / ${totalFilasEstimadas.toLocaleString()})...`);
-                ultimoReporte = ahora;
-                // Yield para no bloquear el thread
-                await new Promise(resolve => setTimeout(resolve, 0));
-              }
-            }
-          }
-        }
-      } else if (centrosSeleccionados.length > 0) {
-        for (const centro of centrosSeleccionados) {
-          const rowData = { ...baseRowData };
-          rowData['centrosCostoIds'] = centro?.id || '';
-          rowData['centrosCostoNombres'] = centro?.nombre || '';
-          rowData['departamentosIds'] = '';
-          rowData['departamentosNombres'] = '';
-          
-          if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
-            rowData['ordenGlobal'] = ordenGlobal++;
-          } else {
-            rowData['ordenGlobal'] = '';
-          }
-          
-          worksheet.addRow(rowData);
-          filasGeneradas++;
-          
-          if (filasGeneradas % CHUNK_SIZE === 0) {
-            const ahora = Date.now();
-            if (ahora - ultimoReporte >= 100) {
-              onProgress?.(filasGeneradas, totalFilasEstimadas, `Procesando filas (${filasGeneradas.toLocaleString()} / ${totalFilasEstimadas.toLocaleString()})...`);
-              ultimoReporte = ahora;
-              await new Promise(resolve => setTimeout(resolve, 0));
-            }
-          }
-        }
-      } else if (departamentosSeleccionados.length > 0) {
-        for (const departamento of departamentosSeleccionados) {
-          const rowData = { ...baseRowData };
-          rowData['centrosCostoIds'] = '';
-          rowData['centrosCostoNombres'] = '';
-          rowData['departamentosIds'] = departamento?.id || '';
-          rowData['departamentosNombres'] = departamento?.nombre || '';
-          
-          if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
-            rowData['ordenGlobal'] = ordenGlobal++;
-          } else {
-            rowData['ordenGlobal'] = '';
-          }
-          
-          worksheet.addRow(rowData);
-          filasGeneradas++;
-          
-          if (filasGeneradas % CHUNK_SIZE === 0) {
-            const ahora = Date.now();
-            if (ahora - ultimoReporte >= 100) {
-              onProgress?.(filasGeneradas, totalFilasEstimadas, `Procesando filas (${filasGeneradas.toLocaleString()} / ${totalFilasEstimadas.toLocaleString()})...`);
-              ultimoReporte = ahora;
-              await new Promise(resolve => setTimeout(resolve, 0));
-            }
-          }
-        }
-      } else {
-        const rowData = { ...baseRowData };
-        rowData['centrosCostoIds'] = '';
-        rowData['centrosCostoNombres'] = '';
-        rowData['departamentosIds'] = '';
-        rowData['departamentosNombres'] = '';
-        
-        if (nodo.tipo === 'cuenta' || nodo.tipo === 'medida') {
-          rowData['ordenGlobal'] = ordenGlobal++;
-        } else {
-          rowData['ordenGlobal'] = '';
-        }
-        
-        worksheet.addRow(rowData);
-        filasGeneradas++;
-        
-        if (filasGeneradas % CHUNK_SIZE === 0) {
-          const ahora = Date.now();
-          if (ahora - ultimoReporte >= 100) {
-            onProgress?.(filasGeneradas, totalFilasEstimadas, `Procesando filas (${filasGeneradas.toLocaleString()} / ${totalFilasEstimadas.toLocaleString()})...`);
-            ultimoReporte = ahora;
-            await new Promise(resolve => setTimeout(resolve, 0));
-          }
-        }
-      }
-
-      if (nodo.hijos.length > 0) {
-        await agregarNodos(nodo.hijos, nivel + 1, nuevosValores);
-      }
-    }
-  };
-
-  await agregarNodos(formato.estructura);
-  
-  // Reportar progreso final de procesamiento
-  onProgress?.(filasGeneradas, filasGeneradas, `Se generaron ${filasGeneradas.toLocaleString()} filas`);
-  
-  // Aplicar estilos
-  onProgress?.(filasGeneradas, filasGeneradas, 'Aplicando estilos al archivo...');
-
-  worksheet.eachRow((row, rowNumber) => {
-    row.eachCell((cell) => {
-      cell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
-      if (rowNumber > 1) {
-        cell.font = { color: { argb: 'FF000000' } };
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFFFFFF' }
-        };
-      }
-    });
-  });
-
-  // Generar el archivo Excel
-  onProgress?.(filasGeneradas, filasGeneradas, 'Generando archivo Excel...');
-  const buffer = await workbook.xlsx.writeBuffer();
-  
-  // Log de verificación de integridad
-  console.log(`✓ Exportación completada: ${filasGeneradas} filas generadas en ${((Date.now() - startTime) / 1000).toFixed(2)}s`);
-  
-  return buffer as unknown as Buffer;
-}
-
 export async function exportarAExcel({ formato, datos, centrosCostoList = [], departamentosList = [] }: ExportOptions): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('FormatoInforme');
 
-  // Función para obtener la profundidad máxima del árbol
+  // FunciÃ³n para obtener la profundidad mÃ¡xima del Ã¡rbol
   const obtenerProfundidadMaxima = (nodos: Nodo[], nivel = 0): number => {
     let maxProfundidad = nivel;
     nodos.forEach(nodo => {
@@ -386,10 +28,10 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
 
   const profundidadMaxima = obtenerProfundidadMaxima(formato.estructura) + 1;
 
-  // --- INICIO: Lógica para generar columnas de orden ---
-  const nivelesUnicos: { [key: string]: string[] } = {}; // Usar array para mantener el orden de aparición
+  // --- INICIO: LÃ³gica para generar columnas de orden ---
+  const nivelesUnicos: { [key: string]: string[] } = {}; // Usar array para mantener el orden de apariciÃ³n
 
-  // Función para recolectar valores únicos de cada nivel en orden de aparición
+  // FunciÃ³n para recolectar valores Ãºnicos de cada nivel en orden de apariciÃ³n
   const recolectarValoresNiveles = (nodos: Nodo[], nivel = 0, valoresAnteriores: string[] = []) => {
     nodos.forEach(nodo => {
       const nuevosValores = [...valoresAnteriores];
@@ -425,7 +67,7 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
 
   recolectarValoresNiveles(formato.estructura);
 
-  // Crear mapas de ordenamiento para cada nivel basados en el orden de aparición
+  // Crear mapas de ordenamiento para cada nivel basados en el orden de apariciÃ³n
   const mapasDeOrden: { [key: string]: Map<string, number> } = {};
   for (let i = 0; i < profundidadMaxima; i++) {
     const keyNivel = `nivel${i + 1}`;
@@ -434,9 +76,9 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
       mapasDeOrden[keyNivel] = new Map(valoresEnOrdenDeAparicion.map((valor, index) => [valor, index + 1]));
     }
   }
-  // --- FIN: Lógica para generar columnas de orden ---
+  // --- FIN: LÃ³gica para generar columnas de orden ---
 
-  // Configurar columnas dinámicamente con columnas de orden
+  // Configurar columnas dinÃ¡micamente con columnas de orden
   const columns = [
     { header: 'Nombre del informe', key: 'nombreInforme', width: 30 },
   ];
@@ -457,7 +99,7 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
     { header: 'Numero de Cuenta', key: 'numeroCuenta', width: 20 },
     { header: 'Nombre de Cuenta', key: 'nombreCuenta', width: 30 },
     { header: 'Tipo de Cuenta', key: 'tipoCuenta', width: 20 },
-    { header: 'Descripción completa', key: 'descripcionCompleta', width: 40 },
+    { header: 'DescripciÃ³n completa', key: 'descripcionCompleta', width: 40 },
     { header: 'Tipo de Nodo', key: 'tipoNodo', width: 15 },
     { header: 'Es Linea de Informe', key: 'esLineaInforme', width: 15 }
   );
@@ -473,7 +115,7 @@ export async function exportarAExcel({ formato, datos, centrosCostoList = [], de
   };
 
   let ordenGlobal = 1;
-  // Función recursiva para agregar nodos
+  // FunciÃ³n recursiva para agregar nodos
   const agregarNodos = (nodos: Nodo[], nivel: number = 0, valoresAnteriores: string[] = []) => {
     nodos.forEach(nodo => {
       const nuevosValores = [...valoresAnteriores];
@@ -612,10 +254,10 @@ export async function importFromExcel({ file, centrosCostoList, departamentosLis
   
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
-    throw new Error('El archivo Excel no contiene hojas de cálculo');
+    throw new Error('El archivo Excel no contiene hojas de cÃ¡lculo');
   }
 
-  // Obtener índices de columnas
+  // Obtener Ã­ndices de columnas
   const headerRow = worksheet.getRow(1);
   const columnIndices: { [key: string]: number } = {};
   
@@ -696,7 +338,7 @@ export async function importFromExcel({ file, centrosCostoList, departamentosLis
       .map((s: string) => s.trim())
       .filter(Boolean);
       
-    console.log('IDs de NetSuite extraídos:', centrosCostoIds);
+    console.log('IDs de NetSuite extraÃ­dos:', centrosCostoIds);
     
     // Verificar que todos los IDs existan en centrosCostoList
     const centrosNoEncontrados = centrosCostoIds.filter(netSuiteId => 
@@ -740,7 +382,7 @@ export async function importFromExcel({ file, centrosCostoList, departamentosLis
       }
     }
     
-    // Encontrar el nivel más profundo con contenido
+    // Encontrar el nivel mÃ¡s profundo con contenido
     for (let i = niveles.length - 1; i >= 0; i--) {
       if (niveles[i]) {
         currentLevel = i;
@@ -762,12 +404,12 @@ export async function importFromExcel({ file, centrosCostoList, departamentosLis
       if (numeroCuenta && nombreCuenta && tipoCuenta) {
         tipoNodo = 'cuenta';
       } else if (esLineaInforme && !numeroCuenta) {
-        // Si es línea de informe pero no tiene número de cuenta, es una medida
+        // Si es lÃ­nea de informe pero no tiene nÃºmero de cuenta, es una medida
         tipoNodo = 'medida';
       }
     }
     
-    // Si es una cuenta (tiene número de cuenta) o una medida
+    // Si es una cuenta (tiene nÃºmero de cuenta) o una medida
     if ((tipoNodo === 'cuenta' && numeroCuenta && nombreCuenta) || tipoNodo === 'medida') {
       // Solo crear objeto CuentaContable para nodos tipo cuenta
       const cuenta = tipoNodo === 'cuenta' ? {
@@ -890,11 +532,11 @@ export async function exportarGruposCuentasAExcel({ gruposCuentas, cuentasList }
   worksheet.columns = [
     { header: 'ID Grupo', key: 'idGrupo', width: 40 },
     { header: 'Nombre Grupo', key: 'nombreGrupo', width: 30 },
-    { header: 'Descripción Grupo', key: 'descripcionGrupo', width: 50 },
-    { header: 'Fecha Creación', key: 'fechaCreacion', width: 20 },
-    { header: 'Fecha Modificación', key: 'fechaModificacion', width: 20 },
+    { header: 'DescripciÃ³n Grupo', key: 'descripcionGrupo', width: 50 },
+    { header: 'Fecha CreaciÃ³n', key: 'fechaCreacion', width: 20 },
+    { header: 'Fecha ModificaciÃ³n', key: 'fechaModificacion', width: 20 },
     { header: 'ID Cuenta', key: 'idCuenta', width: 40 },
-    { header: 'Código Cuenta', key: 'codigoCuenta', width: 20 },
+    { header: 'CÃ³digo Cuenta', key: 'codigoCuenta', width: 20 },
     { header: 'Nombre Cuenta', key: 'nombreCuenta', width: 30 },
     { header: 'Naturaleza Cuenta', key: 'naturalezaCuenta', width: 20 }
   ];
@@ -907,7 +549,7 @@ export async function exportarGruposCuentasAExcel({ gruposCuentas, cuentasList }
     fgColor: { argb: 'FF2563EB' }
   };
 
-  // Función auxiliar para formatear fechas de forma segura
+  // FunciÃ³n auxiliar para formatear fechas de forma segura
   const formatearFecha = (fecha: Date | string | undefined): string => {
     if (!fecha) return new Date().toISOString().split('T')[0];
     
@@ -933,7 +575,7 @@ export async function exportarGruposCuentasAExcel({ gruposCuentas, cuentasList }
     const fechaModificacionFormatted = formatearFecha(grupo.fechaModificacion);
 
     if (cuentasDelGrupo.length === 0) {
-      // Si el grupo no tiene cuentas válidas, agregar una fila solo con datos del grupo
+      // Si el grupo no tiene cuentas vÃ¡lidas, agregar una fila solo con datos del grupo
       worksheet.addRow({
         idGrupo: grupo.id || '',
         nombreGrupo: grupo.nombre || '',
@@ -995,10 +637,10 @@ export async function importarGruposCuentasDesdeExcel({ file, cuentasList }: Imp
   
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
-    throw new Error('El archivo Excel no contiene hojas de cálculo');
+    throw new Error('El archivo Excel no contiene hojas de cÃ¡lculo');
   }
 
-  // Obtener índices de columnas
+  // Obtener Ã­ndices de columnas
   const headerRow = worksheet.getRow(1);
   const columnIndices: { [key: string]: number } = {};
   
@@ -1010,8 +652,8 @@ export async function importarGruposCuentasDesdeExcel({ file, cuentasList }: Imp
   const requiredColumns = [
     'ID Grupo',
     'Nombre Grupo',
-    'Fecha Creación',
-    'Fecha Modificación'
+    'Fecha CreaciÃ³n',
+    'Fecha ModificaciÃ³n'
   ];
 
   for (const col of requiredColumns) {
@@ -1034,7 +676,7 @@ export async function importarGruposCuentasDesdeExcel({ file, cuentasList }: Imp
   for (let i = 2; i <= worksheet.rowCount; i++) {
     const row = worksheet.getRow(i);
     
-    // Verificar si la fila está vacía
+    // Verificar si la fila estÃ¡ vacÃ­a
     const isEmptyRow = !row.hasValues;
     if (isEmptyRow) {
       continue;
@@ -1043,11 +685,11 @@ export async function importarGruposCuentasDesdeExcel({ file, cuentasList }: Imp
     // Obtener valores de las celdas
     const idGrupo = row.getCell(columnIndices['ID Grupo']).value?.toString()?.trim();
     const nombreGrupo = row.getCell(columnIndices['Nombre Grupo']).value?.toString()?.trim();
-    const descripcionGrupo = columnIndices['Descripción Grupo'] 
-      ? row.getCell(columnIndices['Descripción Grupo']).value?.toString()?.trim() || ''
+    const descripcionGrupo = columnIndices['DescripciÃ³n Grupo'] 
+      ? row.getCell(columnIndices['DescripciÃ³n Grupo']).value?.toString()?.trim() || ''
       : '';
-    const fechaCreacionStr = row.getCell(columnIndices['Fecha Creación']).value?.toString()?.trim();
-    const fechaModificacionStr = row.getCell(columnIndices['Fecha Modificación']).value?.toString()?.trim();
+    const fechaCreacionStr = row.getCell(columnIndices['Fecha CreaciÃ³n']).value?.toString()?.trim();
+    const fechaModificacionStr = row.getCell(columnIndices['Fecha ModificaciÃ³n']).value?.toString()?.trim();
     const idCuenta = columnIndices['ID Cuenta'] 
       ? row.getCell(columnIndices['ID Cuenta']).value?.toString()?.trim()
       : '';
@@ -1069,7 +711,7 @@ export async function importarGruposCuentasDesdeExcel({ file, cuentasList }: Imp
       fechaModificacion = fechaModificacionStr ? new Date(fechaModificacionStr) : new Date();
       
       if (isNaN(fechaCreacion.getTime()) || isNaN(fechaModificacion.getTime())) {
-        throw new Error('Fecha inválida');
+        throw new Error('Fecha invÃ¡lida');
       }
     } catch (error) {
       console.warn(`Fila ${i}: Error al parsear fechas, usando fechas por defecto`);
@@ -1080,7 +722,7 @@ export async function importarGruposCuentasDesdeExcel({ file, cuentasList }: Imp
     // Verificar si el grupo ya existe en el mapa
     if (!gruposMap.has(idGrupo)) {
       gruposMap.set(idGrupo, {
-        id: uuidv4(), // Generar nuevo ID único para evitar conflictos
+        id: uuidv4(), // Generar nuevo ID Ãºnico para evitar conflictos
         nombre: nombreGrupo,
         descripcion: descripcionGrupo,
         fechaCreacion,
@@ -1089,7 +731,7 @@ export async function importarGruposCuentasDesdeExcel({ file, cuentasList }: Imp
       });
     }
 
-    // Agregar cuenta al grupo si existe y es válida
+    // Agregar cuenta al grupo si existe y es vÃ¡lida
     if (idCuenta) {
       const cuentaExiste = cuentasList.some(c => c.id === idCuenta);
       if (cuentaExiste) {
@@ -1098,7 +740,7 @@ export async function importarGruposCuentasDesdeExcel({ file, cuentasList }: Imp
           grupo.cuentas.push(idCuenta);
         }
       } else {
-        console.warn(`Fila ${i}: Cuenta con ID ${idCuenta} no encontrada en el catálogo, saltando cuenta`);
+        console.warn(`Fila ${i}: Cuenta con ID ${idCuenta} no encontrada en el catÃ¡logo, saltando cuenta`);
       }
     }
   }
@@ -1119,7 +761,7 @@ export async function importarGruposCuentasDesdeExcel({ file, cuentasList }: Imp
   });
 
   if (gruposCuentas.length === 0) {
-    throw new Error('No se encontraron grupos válidos para importar');
+    throw new Error('No se encontraron grupos vÃ¡lidos para importar');
   }
 
   return { gruposCuentas };
